@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';
 
-const GROUND_COLORS = { [T.ROAD]: '#6b6e73', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
+const GROUND_COLORS = { [T.ROAD]: '#9aa0a6', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
 const HORIZON = 0xffd9a0;
 const SHADOW_HALF = 420;
 const SUN_OFFSET = new THREE.Vector3(-700, 900, -500);
@@ -64,14 +64,20 @@ export function initRenderer(canvas, hudCanvas, world) {
   renderer.shadowMap.enabled = !software;
   renderer.shadowMap.type = software ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
   scene.background = makeSkyTexture();
   scene.fog = new THREE.Fog(HORIZON, 700, 2000);
-  scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x8a7a5a, 0.55));
+  scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x9a8a6a, 1.15));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
   const shadowSize = renderer.capabilities.isWebGL2 ? 2048 : 1024;
-  const sun = new THREE.DirectionalLight(0xffe6b8, 1.15);
+  const sun = new THREE.DirectionalLight(0xffe6b8, 3.0);
+  sun.position.set(-700, 900, -500);
+  sun.target.position.set(0, 0, 0);
   sun.castShadow = !software;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.bias = -0.0006;
@@ -147,7 +153,9 @@ export function buildWorldMeshes(gfx, world) {
   const facade = makeFacadeTexture();
   const buildings = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshLambertMaterial({ map: facade }),
+    gfx.software
+      ? new THREE.MeshLambertMaterial({ map: facade, emissive: 0x222222 })
+      : new THREE.MeshStandardMaterial({ map: facade, roughness: 0.85, metalness: 0.0 }),
     world.buildings.length,
   );
   const matrix = new THREE.Matrix4(), color = new THREE.Color();

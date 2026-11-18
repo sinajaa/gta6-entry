@@ -16,7 +16,7 @@ function mulberry32(seed) {
   };
 }
 
-const COLORS = ['#d8c3a5', '#c9ada7', '#a9b8c8', '#b8c4a8', '#e0b48a', '#9fb1bc', '#cfcfd6', '#d9a5a0'];
+const COLORS = ['#f0dcbc', '#e6c9c2', '#c4d4e6', '#d2e0bf', '#f5c99a', '#bfd2de', '#e8e8f0', '#f0bdb8'];
 const BLOCKS = COLS / PERIOD;
 
 function splitRect(r, axis, rand) {

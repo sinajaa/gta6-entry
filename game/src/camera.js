@@ -21,8 +21,8 @@ export function updateCamera(cam, target, world, dt, driving = false) {
   cam.y = Math.max(0, Math.min(world.height - cam.visH, cam.y));
 }
 
-const WALK = { up: 270, back: 340, fov: 46, lookY: 40 };
-const DRIVE = { up: 330, back: 470, fov: 52, lookY: 40 };
+const WALK = { up: 250, back: 360, fov: 46, lookY: 80 };
+const DRIVE = { up: 310, back: 490, fov: 52, lookY: 80 };
 const DOLLY_MAX = 90, SPEED_MAX = 320, EDGE_MARGIN = 200;
 
 export function updateCamera3D(cam3d, actor, mode, dt) {
