@@ -1,124 +1,67 @@
-// The game's rules and state, with no drawing and no browser in it: the player's paddle, the
-// pool of falling blocks and coins, spawning, collisions, score, lives and level. step() advances
-// one fixed step and returns what happened as bit flags, so the caller can react without the
-// world knowing about screens or sound. Nothing here allocates after createWorld returns.
-import { BLOCK, COIN, FIELD, LEVEL, LIVES, PLAYER, POOL_SIZE } from './config.js';
+export const TILE = 32;
+export const COLS = 80;
+export const ROWS = 80;
+export const WORLD_W = COLS * TILE;
+export const WORLD_H = ROWS * TILE;
+export const T = { ROAD: 0, SIDEWALK: 1, GRASS: 2, BUILDING: 3 };
+const PERIOD = 10;
 
-export const KIND_BLOCK = 0;
-export const KIND_COIN = 1;
-
-export const EVENT_HIT = 1;
-export const EVENT_COIN = 2;
-export const EVENT_OVER = 4;
-
-function overlaps(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+function mulberry32(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-export function createWorld(random) {
-  const player = { x: 0, y: FIELD.groundY - PLAYER.height, width: PLAYER.width, height: PLAYER.height, invulnerable: 0 };
-  const items = [];
-  for (let index = 0; index < POOL_SIZE; index += 1) {
-    items.push({ active: false, kind: KIND_BLOCK, x: 0, y: 0, width: 0, height: 0, speed: 0 });
-  }
-  const state = { player, items, score: 0, lives: LIVES, level: 1, elapsed: 0, blockTimer: 0, coinTimer: 0 };
+const ROOFS = ['#c8553d', '#e0a458', '#6a8caf', '#8a9a5b', '#b5838d', '#d4c4a8', '#7d6b91', '#e8825a'];
 
-  function reset() {
-    player.x = (FIELD.width - player.width) / 2;
-    player.invulnerable = 0;
-    for (const item of items) item.active = false;
-    state.score = 0;
-    state.lives = LIVES;
-    state.level = 1;
-    state.elapsed = 0;
-    state.blockTimer = BLOCK.interval;
-    state.coinTimer = COIN.interval;
-  }
+export function createWorld(seed = 1337) {
+  const rand = mulberry32(seed);
+  const tiles = new Uint8Array(COLS * ROWS);
+  const buildings = [];
+  const parks = [];
 
-  function freeItem() {
-    for (let index = 0; index < items.length; index += 1) if (!items[index].active) return items[index];
-    return null;
-  }
+  const kind = (i) => {
+    const m = i % PERIOD;
+    return m < 2 ? 'road' : m === 2 || m === 9 ? 'walk' : 'block';
+  };
 
-  function spawnBlock() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_BLOCK;
-    item.width = BLOCK.minWidth + random() * (BLOCK.maxWidth - BLOCK.minWidth);
-    item.height = BLOCK.height;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = BLOCK.speed + BLOCK.speedPerLevel * (state.level - 1) + random() * BLOCK.speedJitter;
-  }
-
-  function spawnCoin() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_COIN;
-    item.width = COIN.size;
-    item.height = COIN.size;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = COIN.speed + COIN.speedPerLevel * (state.level - 1);
-  }
-
-  function blockInterval() {
-    return Math.max(BLOCK.minInterval, BLOCK.interval * BLOCK.intervalScale ** (state.level - 1));
-  }
-
-  /**
-   * One fixed step. `direction` is -1, 0 or 1 (left, still, right). With `harmless` set (the title
-   * screen's backdrop) things fall but nothing touches the player and nothing scores.
-   */
-  function step(dt, direction, harmless) {
-    let events = 0;
-    state.elapsed += dt;
-    state.level = Math.min(LEVEL.max, 1 + Math.floor(state.elapsed / LEVEL.seconds));
-
-    player.x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * dt));
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
-
-    state.blockTimer -= dt;
-    if (state.blockTimer <= 0) {
-      spawnBlock();
-      state.blockTimer += blockInterval();
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const kx = kind(x), ky = kind(y);
+      let t = T.GRASS;
+      if (kx === 'road' || ky === 'road') t = T.ROAD;
+      else if (kx === 'walk' || ky === 'walk') t = T.SIDEWALK;
+      tiles[y * COLS + x] = t;
     }
-    state.coinTimer -= dt;
-    if (state.coinTimer <= 0) {
-      spawnCoin();
-      state.coinTimer += COIN.interval + random() * COIN.intervalJitter;
-    }
+  }
 
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      item.y += item.speed * dt;
-      if (item.y > FIELD.groundY) {
-        item.active = false;
-        if (item.kind === KIND_BLOCK && !harmless) state.score += BLOCK.dodgePoints;
-        continue;
-      }
-      if (harmless || !overlaps(item, player)) continue;
-      if (item.kind === KIND_COIN) {
-        item.active = false;
-        state.score += COIN.points;
-        events |= EVENT_COIN;
-      } else if (player.invulnerable === 0) {
-        item.active = false;
-        state.lives -= 1;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        if (state.lives === 0) {
-          events |= EVENT_OVER;
-          break;
-        }
+  for (let by = 0; by < ROWS / PERIOD; by++) {
+    for (let bx = 0; bx < COLS / PERIOD; bx++) {
+      const x0 = bx * PERIOD + 3, y0 = by * PERIOD + 3;
+      if (rand() < 0.15) { parks.push({ x: x0 * TILE, y: y0 * TILE, w: 6 * TILE, h: 6 * TILE }); continue; }
+      const splitX = rand() < 0.5;
+      const parts = rand() < 0.5
+        ? [[x0, y0, 6, 6]]
+        : splitX ? [[x0, y0, 3, 6], [x0 + 3, y0, 3, 6]] : [[x0, y0, 6, 3], [x0, y0 + 3, 6, 3]];
+      for (const [px, py, pw, ph] of parts) {
+        const inset = parts.length === 1 ? 0 : 0;
+        for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) tiles[y * COLS + x] = T.BUILDING;
+        buildings.push({
+          x: px * TILE + inset, y: py * TILE, w: pw * TILE, h: ph * TILE,
+          roof: ROOFS[Math.floor(rand() * ROOFS.length)],
+          height: 10 + Math.floor(rand() * 14),
+        });
       }
     }
-    return events;
   }
+  return { tiles, buildings, parks, width: WORLD_W, height: WORLD_H };
+}
 
-  reset();
-  return { state, reset, step };
+export function tileAt(world, x, y) {
+  const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+  if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return T.BUILDING;
+  return world.tiles[ty * COLS + tx];
 }
