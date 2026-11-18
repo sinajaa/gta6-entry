@@ -1,16 +1,15 @@
 import { createWorld } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
-import { createCamera, updateCamera } from './camera.js';
-import { render } from './render.js';
-import { createCars, updateDrivenCar, updateTraffic, toggleVehicle, carFocus } from './vehicle.js';
+import { updateCamera3D } from './camera.js';
+import { initRenderer, renderFrame } from './render3d.js';
+import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
 const world = createWorld();
 const player = createPlayer(10 * 32, 10 * 32 + 16);
 player.car = null;
 createCars(world, player.x, player.y);
-const camera = createCamera(canvas.width, canvas.height);
+const gfx = initRenderer(canvas, document.getElementById('hud'), world);
 const keys = new Set();
 
 addEventListener('keydown', (e) => {
@@ -22,9 +21,6 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 
-camera.x = player.x - camera.viewW / 2;
-camera.y = player.y - camera.viewH / 2;
-
 let last = performance.now(), fps = 0, frames = 0, fpsTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -35,8 +31,8 @@ function frame(now) {
   if (car) updateDrivenCar(car, keys, world, dt);
   else updatePlayer(player, keys, world, dt);
   updateTraffic(world, dt);
-  updateCamera(camera, car ? carFocus(car) : player, world, dt, !!car);
-  render(ctx, world, player, camera, fps);
+  updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
+  renderFrame(gfx, world, player, fps);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
