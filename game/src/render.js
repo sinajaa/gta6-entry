@@ -1,4 +1,5 @@
 import { TILE, COLS, ROWS, T } from './world.js';
+import { nearestEnterable } from './vehicle.js';
 
 const COLORS = { [T.ROAD]: '#6b6e73', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#a89f91' };
 
@@ -7,20 +8,22 @@ export function render(ctx, world, player, cam, fps) {
   ctx.fillStyle = '#f3e3b5';
   ctx.fillRect(0, 0, viewW, viewH);
   ctx.save();
+  ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
 
   drawGround(ctx, world, cam);
   drawParks(ctx, world, cam);
   drawBuildings(ctx, world, cam);
-  drawPlayer(ctx, player);
+  drawCars(ctx, world, cam);
+  if (!player.car) drawPlayer(ctx, player);
 
   ctx.restore();
-  drawHud(ctx, player, fps);
+  drawHud(ctx, world, player, fps);
 }
 
 function drawGround(ctx, world, cam) {
-  const x0 = Math.max(0, Math.floor(cam.x / TILE)), x1 = Math.min(COLS - 1, Math.floor((cam.x + cam.viewW) / TILE));
-  const y0 = Math.max(0, Math.floor(cam.y / TILE)), y1 = Math.min(ROWS - 1, Math.floor((cam.y + cam.viewH) / TILE));
+  const x0 = Math.max(0, Math.floor(cam.x / TILE)), x1 = Math.min(COLS - 1, Math.floor((cam.x + cam.visW) / TILE));
+  const y0 = Math.max(0, Math.floor(cam.y / TILE)), y1 = Math.min(ROWS - 1, Math.floor((cam.y + cam.visH) / TILE));
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const t = world.tiles[y * COLS + x];
@@ -88,15 +91,50 @@ function drawPlayer(ctx, p) {
   ctx.beginPath(); ctx.arc(p.x + Math.cos(p.facing) * 7, p.y + Math.sin(p.facing) * 7, 2, 0, 7); ctx.fill();
 }
 
-function drawHud(ctx, p, fps) {
+function drawCars(ctx, world, cam) {
+  for (const car of world.cars) {
+    if (!visible({ x: car.x - 24, y: car.y - 24, w: 48, h: 48 }, cam)) continue;
+    ctx.save();
+    ctx.translate(car.x, car.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-16, -6, 38, 20);
+    ctx.rotate(car.angle);
+    ctx.fillStyle = car.color;
+    ctx.fillRect(-18, -9, 36, 18);
+    ctx.fillStyle = '#2a3340';
+    ctx.fillRect(-4, -7, 9, 14);
+    ctx.fillRect(10, -7, 4, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(-18, -9, 36, 3);
+    ctx.fillStyle = '#fff6c8';
+    ctx.fillRect(16, -8, 2, 4);
+    ctx.fillRect(16, 4, 2, 4);
+    ctx.restore();
+  }
+}
+
+function drawHud(ctx, world, p, fps) {
+  const car = p.car;
   ctx.fillStyle = 'rgba(20,20,20,0.6)';
-  ctx.fillRect(8, 8, 170, 40);
+  ctx.fillRect(8, 8, 170, car ? 56 : 40);
   ctx.fillStyle = '#fff';
   ctx.font = '12px monospace';
-  ctx.fillText(`X ${p.x.toFixed(0)}  Y ${p.y.toFixed(0)}`, 16, 24);
-  ctx.fillText(`FPS ${fps}${p.sprinting ? '  SPRINT' : ''}`, 16, 40);
+  const pos = car || p;
+  ctx.fillText(`X ${pos.x.toFixed(0)}  Y ${pos.y.toFixed(0)}`, 16, 24);
+  ctx.fillText(`FPS ${fps}${p.sprinting && !car ? '  SPRINT' : ''}`, 16, 40);
+  if (car) {
+    ctx.fillText(`${Math.round(Math.abs(car.speed) * 0.36)} km/j`, 16, 56);
+    ctx.fillText('E: keluar mobil', 16, 530);
+  } else if (nearestEnterable(world, p)) {
+    ctx.fillStyle = 'rgba(20,20,20,0.7)';
+    ctx.fillRect(380, 490, 200, 28);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('E: masuk/keluar mobil', 480, 508);
+    ctx.textAlign = 'left';
+  }
 }
 
 function visible(r, cam) {
-  return r.x < cam.x + cam.viewW && r.x + r.w > cam.x && r.y < cam.y + cam.viewH && r.y + r.h > cam.y;
+  return r.x < cam.x + cam.visW && r.x + r.w > cam.x && r.y < cam.y + cam.visH && r.y + r.h > cam.y;
 }
