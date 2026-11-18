@@ -55,4 +55,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { world, player, police, keys };
+window.__game = { world, player, police, keys, gfx };
