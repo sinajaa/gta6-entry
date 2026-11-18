@@ -9,6 +9,9 @@ const SUN_OFFSET = new THREE.Vector3(-0.6, 1, -0.4).normalize().multiplyScalar(9
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
 const MAX_CARS = 64;
+const MAX_LIGHTS = 16, LIGHT_HZ = 6;
+const LIGHT_SIZE = { length: 6, height: 3, width: 8 };
+const STAR_COLOR = '#f5c518';
 
 function cellHash(gx, gy) {
   let h = Math.imul(gx * 374761393 + gy * 668265263, 1274126177);
@@ -37,7 +40,7 @@ export function initRenderer(canvas, hudCanvas, world) {
   scene.add(sun, sun.target);
 
   const camera = new THREE.PerspectiveCamera(55, 960 / 540, 1, 2600);
-  const gfx = { renderer, scene, camera, sun, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null };
+  const gfx = { renderer, scene, camera, sun, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1 };
   buildWorldMeshes(gfx, world);
   return gfx;
 }
@@ -133,6 +136,17 @@ export function buildWorldMeshes(gfx, world) {
   gfx.scene.add(cars);
   gfx.carMesh = cars;
 
+  const lights = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(LIGHT_SIZE.length, LIGHT_SIZE.height, LIGHT_SIZE.width),
+    new THREE.MeshBasicMaterial(),
+    MAX_LIGHTS * 2,
+  );
+  lights.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  lights.frustumCulled = false;
+  lights.count = 0;
+  gfx.scene.add(lights);
+  gfx.lightMesh = lights;
+
   const playerMesh = new THREE.Mesh(
     new THREE.CapsuleGeometry(7, PLAYER_HEIGHT - 14, 4, 12),
     new THREE.MeshLambertMaterial({ color: 0x2b4a8b }),
@@ -149,6 +163,34 @@ const carScale = new THREE.Vector3(1, 1, 1);
 const yAxis = new THREE.Vector3(0, 1, 0);
 const carColor = new THREE.Color();
 
+const RED = new THREE.Color('#ff2a2a'), BLUE = new THREE.Color('#2a5aff');
+const lightOffset = new THREE.Vector3();
+
+function syncPoliceLights(gfx, world) {
+  const phase = Math.floor(world.time * LIGHT_HZ * 2) % 2;
+  const cops = world.cars.filter((car) => car.driver === 'cop').slice(0, MAX_LIGHTS);
+  const signature = cops.length * 2 + phase;
+  const moving = cops.some((car) => car.speed !== 0);
+  if (!moving && signature === gfx.lightSignature && gfx.lightPhase === phase) return;
+  gfx.lightSignature = signature;
+  gfx.lightPhase = phase;
+  cops.forEach((car, i) => {
+    carQuaternion.setFromAxisAngle(yAxis, -car.angle);
+    [-1, 1].forEach((side, s) => {
+      lightOffset.set(0, CAR_SIZE.height / 2 + 2, side * 6).applyQuaternion(carQuaternion);
+      carPosition.set(car.x - WORLD_W / 2, CAR_SIZE.height / 2 + 2, car.y - WORLD_H / 2).add(lightOffset);
+      carMatrix.compose(carPosition, carQuaternion, carScale);
+      gfx.lightMesh.setMatrixAt(i * 2 + s, carMatrix);
+      const lit = (s + phase) % 2 === 0;
+      const base = side < 0 ? RED : BLUE;
+      gfx.lightMesh.setColorAt(i * 2 + s, carColor.copy(base).multiplyScalar(lit ? 1 : 0.15));
+    });
+  });
+  gfx.lightMesh.count = cops.length * 2;
+  gfx.lightMesh.instanceMatrix.needsUpdate = true;
+  if (gfx.lightMesh.instanceColor) gfx.lightMesh.instanceColor.needsUpdate = true;
+}
+
 export function syncActors(gfx, world, player) {
   const count = Math.min(world.cars.length, MAX_CARS);
   world.cars.forEach((car, i) => {
@@ -162,6 +204,8 @@ export function syncActors(gfx, world, player) {
   gfx.carMesh.count = count;
   gfx.carMesh.instanceMatrix.needsUpdate = true;
   if (gfx.carMesh.instanceColor) gfx.carMesh.instanceColor.needsUpdate = true;
+
+  syncPoliceLights(gfx, world);
 
   gfx.playerMesh.visible = !player.car;
   gfx.playerMesh.position.set(player.x - WORLD_W / 2, PLAYER_HEIGHT / 2, player.y - WORLD_H / 2);
@@ -180,6 +224,7 @@ export function renderFrame(gfx, world, player, fps) {
 
 export function drawHud(ctx, world, p, fps) {
   ctx.clearRect(0, 0, 960, 540);
+  drawWanted(ctx, world);
   const car = p.car;
   ctx.fillStyle = 'rgba(20,20,20,0.6)';
   ctx.fillRect(8, 8, 170, car ? 56 : 40);
@@ -199,4 +244,39 @@ export function drawHud(ctx, world, p, fps) {
     ctx.fillText('E: masuk/keluar mobil', 480, 508);
     ctx.textAlign = 'left';
   }
+}
+
+function starPath(ctx, cx, cy, outer, inner) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? outer : inner, angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    ctx[i === 0 ? 'moveTo' : 'lineTo'](cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+  }
+  ctx.closePath();
+}
+
+function drawWanted(ctx, world) {
+  const police = world.police;
+  if (!police) return;
+  for (let i = 0; i < 5; i++) {
+    starPath(ctx, 932 - i * 26, 24, 11, 4.5);
+    if (i < police.stars) { ctx.fillStyle = STAR_COLOR; ctx.fill(); }
+    ctx.strokeStyle = i < police.stars ? '#8a6d00' : '#8a8f98';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  if (police.stars <= 0) return;
+  ctx.textAlign = 'right';
+  if (Math.floor(world.time * 2 * 2) % 2 === 0) {
+    ctx.fillStyle = '#ff4040';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('WANTED', 940, 56);
+  }
+  if (police.evadeTimer > 0) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px monospace';
+    ctx.fillText(`EVADE ${Math.ceil(police.evadeTimer)}s`, 940, 74);
+  }
+  ctx.textAlign = 'left';
+  ctx.font = '12px monospace';
 }
