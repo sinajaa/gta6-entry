@@ -8,11 +8,12 @@ const MAX_SPEED = [0, 240, 290, 320, 330, 360];
 const COP_COUNT = [0, 1, 2, 3, 4, 5];
 const EVADE_SECONDS = [10, 14, 18, 24, 30];
 const HEAT_DECAY = 6, NEAR_COP_RANGE = 450, MAX_HEAT = 500;
-const SPAWN_MIN = 700, SPAWN_MAX = 1100, DESPAWN_RANGE = 1700, SPAWN_INTERVAL = 1.2;
-const COP_COLOR = '#2456c4';
+const SPAWN_MIN = 450, SPAWN_MAX = 950, DESPAWN_RANGE = 1700, SPAWN_INTERVAL = 0.35;
+const COP_COLOR = '#2456c4', BLOCK_COLOR = '#2a5aff';
+const HELI_SPEED = 260, HELI_OFFSET = 150, BLOCK_MIN = 400, BLOCK_MAX = 700;
 
 export function createPolice(world) {
-  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0 };
+  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0, heli: null, blocks: [] };
   world.police = state;
   return state;
 }
@@ -202,29 +203,90 @@ function blockedByCar(car, world) {
   return false;
 }
 
-function trySpawn(state, world, focus, facing) {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const bearing = Math.random() * Math.PI * 2, range = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
-    const px = focus.x + Math.cos(bearing) * range, py = focus.y + Math.sin(bearing) * range;
-    const horizontal = Math.random() < 0.5;
-    const positive = Math.random() < 0.5;
-    const roadStart = Math.max(0, Math.min(7, Math.floor((horizontal ? py : px) / ROAD_PERIOD))) * ROAD_PERIOD;
-    const lane = roadStart + (positive === horizontal ? LANE_FAR : LANE_NEAR);
-    const along = Math.max(40, Math.min(world.width - 40, horizontal ? px : py));
-    const phase = along % ROAD_PERIOD;
-    if (phase < ROAD_WIDTH + 40 || phase > ROAD_PERIOD - 40) continue;
-    const x = horizontal ? along : lane, y = horizontal ? lane : along;
-    const offsetX = x - focus.x, offsetY = y - focus.y;
-    const distance = Math.hypot(offsetX, offsetY);
-    if (distance < SPAWN_MIN || distance > SPAWN_MAX) continue;
-    if ((offsetX * Math.cos(facing) + offsetY * Math.sin(facing)) / distance >= 0) continue;
-    if (world.cars.some((other) => Math.hypot(other.x - x, other.y - y) < 80)) continue;
+function nearCar(world, x, y) {
+  return world.cars.some((other) => Math.hypot(other.x - x, other.y - y) < 80);
+}
 
-    const dir = positive ? 1 : -1;
-    const angle = horizontal ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-    const cop = { x, y, angle, speed: 100, color: COP_COLOR, driver: 'cop', state: 'PATROL', axis: horizontal ? 'h' : 'v', lane, dir, backoff: 0 };
-    world.cars.push(cop);
-    state.cars.push(cop);
+function laneAngle(point) {
+  return point.horizontal ? (point.dir > 0 ? 0 : Math.PI) : (point.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+}
+
+function trySpawn(state, world, focus, facing) {
+  const fx = Math.cos(facing), fy = Math.sin(facing);
+  const behind = [], hidden = [], ring = [];
+  for (const point of world.lanePoints) {
+    const ox = point.x - focus.x, oy = point.y - focus.y;
+    const distance = Math.hypot(ox, oy);
+    if (distance < SPAWN_MIN || distance > SPAWN_MAX) continue;
+    const dot = (ox * fx + oy * fy) / distance;
+    ring.push(point);
+    if (dot < 0.2) { hidden.push(point); if (dot < -0.2) behind.push(point); }
+  }
+  for (const pool of [behind, hidden, ring]) {
+    for (let attempt = 0; attempt < 8 && pool.length; attempt++) {
+      const point = pool[Math.floor(Math.random() * pool.length)];
+      if (nearCar(world, point.x, point.y)) continue;
+      const cop = { x: point.x, y: point.y, angle: laneAngle(point), speed: 100, color: COP_COLOR, driver: 'cop', state: 'PATROL', axis: point.horizontal ? 'h' : 'v', lane: point.horizontal ? point.y : point.x, dir: point.dir, backoff: 0 };
+      world.cars.push(cop);
+      state.cars.push(cop);
+      return;
+    }
+  }
+}
+
+function removeCar(world, car) {
+  const index = world.cars.indexOf(car);
+  if (index >= 0) world.cars.splice(index, 1);
+}
+
+function updateHeli(state, world, focus, facing, dt) {
+  if (state.stars < 5) { state.heli = null; return; }
+  const targetX = focus.x + Math.cos(facing) * HELI_OFFSET, targetY = focus.y + Math.sin(facing) * HELI_OFFSET;
+  if (!state.heli) {
+    const away = Math.random() * Math.PI * 2;
+    state.heli = { x: focus.x + Math.cos(away) * 600, y: focus.y + Math.sin(away) * 600, z: 200, angle: 0, rotor: 0 };
+  }
+  const heli = state.heli;
+  const dx = targetX - heli.x, dy = targetY - heli.y, distance = Math.hypot(dx, dy);
+  if (distance > 0.001) {
+    const step = Math.min(distance, HELI_SPEED * dt);
+    heli.x += dx / distance * step;
+    heli.y += dy / distance * step;
+    if (distance > 20) heli.angle = Math.atan2(dy, dx);
+  }
+  heli.rotor += 30 * dt;
+}
+
+function updateRoadblock(state, world, focus, facing) {
+  if (state.stars < 5) {
+    for (const car of state.blocks) removeCar(world, car);
+    state.blocks.length = 0;
+    return;
+  }
+  for (let i = state.blocks.length - 1; i >= 0; i--) {
+    if (Math.hypot(state.blocks[i].x - focus.x, state.blocks[i].y - focus.y) > DESPAWN_RANGE) {
+      removeCar(world, state.blocks[i]);
+      state.blocks.splice(i, 1);
+    }
+  }
+  if (state.blocks.length > 0) return;
+  const fx = Math.cos(facing), fy = Math.sin(facing);
+  const candidates = world.lanePoints.filter((point) => {
+    const ox = point.x - focus.x, oy = point.y - focus.y;
+    const distance = Math.hypot(ox, oy);
+    return distance >= BLOCK_MIN && distance <= BLOCK_MAX && (ox * fx + oy * fy) / distance > 0.5;
+  });
+  while (candidates.length) {
+    const point = candidates.splice(Math.floor(Math.random() * candidates.length), 1)[0];
+    const mate = world.lanePoints.find((other) => other.horizontal === point.horizontal && other.dir !== point.dir
+      && Math.abs((point.horizontal ? other.x - point.x : other.y - point.y)) < 1
+      && Math.abs((point.horizontal ? other.y - point.y : other.x - point.x)) <= 40);
+    if (!mate || nearCar(world, point.x, point.y) || nearCar(world, mate.x, mate.y)) continue;
+    for (const spot of [point, mate]) {
+      const car = { x: spot.x, y: spot.y, angle: laneAngle(spot) + Math.PI / 2, speed: 0, color: BLOCK_COLOR, driver: 'cop', state: 'BLOCK', backoff: 0 };
+      world.cars.push(car);
+      state.blocks.push(car);
+    }
     return;
   }
 }
@@ -244,8 +306,7 @@ export function updatePolice(state, world, player, dt) {
     const cop = state.cars[i];
     if (Math.hypot(cop.x - focus.x, cop.y - focus.y) > DESPAWN_RANGE) {
       state.cars.splice(i, 1);
-      const index = world.cars.indexOf(cop);
-      if (index >= 0) world.cars.splice(index, 1);
+      removeCar(world, cop);
       continue;
     }
     if (state.stars > 0) {
@@ -257,6 +318,8 @@ export function updatePolice(state, world, player, dt) {
       patrol(cop, world, dt);
     }
   }
+  updateHeli(state, world, focus, facing, dt);
+  updateRoadblock(state, world, focus, facing);
   if (seen) state.lastSeen = { x: focus.x, y: focus.y, time: world.time };
   else if (state.stars === 0) state.lastSeen = null;
 }

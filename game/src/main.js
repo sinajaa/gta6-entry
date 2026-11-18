@@ -8,7 +8,7 @@ import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './veh
 
 const canvas = document.getElementById('game');
 const world = createWorld();
-const player = createPlayer(10 * 32, 10 * 32 + 16);
+const player = createPlayer(42 * 32 + 16, 42 * 32 + 16);
 player.car = null;
 createCars(world, player.x, player.y);
 const police = createPolice(world);
