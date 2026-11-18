@@ -1,3 +1,4 @@
+// player.js — gerak dan kontrol pemain berjalan kaki
 const WALK = 150, SPRINT = 260, ACCEL = 1400;
 
 export function createPlayer(x, y) {

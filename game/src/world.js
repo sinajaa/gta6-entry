@@ -1,3 +1,4 @@
+// world.js — grid kota, tile, dan bounding box bangunan
 export const TILE = 32;
 export const COLS = 80;
 export const ROWS = 80;

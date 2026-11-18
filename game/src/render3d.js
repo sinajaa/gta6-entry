@@ -1,3 +1,4 @@
+// render3d.js — render kota 3D dengan three.js dan HUD overlay
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';
@@ -212,19 +213,19 @@ export function syncActors(gfx, world, player) {
   gfx.playerMesh.rotation.y = -player.facing;
 }
 
-export function renderFrame(gfx, world, player, fps) {
+export function renderFrame(gfx, world, player, fps, police) {
   syncActors(gfx, world, player);
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
   gfx.sun.position.set(tx, 0, tz).add(SUN_OFFSET);
   gfx.renderer.render(gfx.scene, gfx.camera);
-  drawHud(gfx.hud, world, player, fps);
+  drawHud(gfx.hud, world, player, fps, police);
 }
 
-export function drawHud(ctx, world, p, fps) {
+export function drawHud(ctx, world, p, fps, police) {
   ctx.clearRect(0, 0, 960, 540);
-  drawWanted(ctx, world);
+  drawWanted(ctx, world, police);
   const car = p.car;
   ctx.fillStyle = 'rgba(20,20,20,0.6)';
   ctx.fillRect(8, 8, 170, car ? 56 : 40);
@@ -255,8 +256,7 @@ function starPath(ctx, cx, cy, outer, inner) {
   ctx.closePath();
 }
 
-function drawWanted(ctx, world) {
-  const police = world.police;
+function drawWanted(ctx, world, police = world.police) {
   if (!police) return;
   for (let i = 0; i < 5; i++) {
     starPath(ctx, 932 - i * 26, 24, 11, 4.5);

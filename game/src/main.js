@@ -1,3 +1,4 @@
+// main.js — titik masuk game, loop utama, dan input
 import { createWorld } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
 import { updateCamera3D } from './camera.js';
@@ -21,7 +22,7 @@ addEventListener('keydown', (e) => {
   if (k === 'e' && !e.repeat) {
     const wasOnFoot = !player.car;
     toggleVehicle(world, player);
-    if (wasOnFoot && player.car) addHeat(world, 40, 'enter vehicle');
+    if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
   }
   keys.add(k);
   if (k.startsWith('arrow') || k === ' ') e.preventDefault();
@@ -50,7 +51,8 @@ function frame(now) {
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
   updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
-  renderFrame(gfx, world, player, fps);
+  renderFrame(gfx, world, player, fps, police);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+window.__game = { world, player, police, keys };

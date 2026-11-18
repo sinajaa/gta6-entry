@@ -1,3 +1,4 @@
+// vehicle.js — mobil, fisika mengemudi, dan lalu lintas NPC
 import { TILE, T, tileAt } from './world.js';
 
 const ACCEL = 260, BRAKE = 420, DRAG = 0.9, TURN = 2.4, MAX = 320, REVERSE_MAX = -90;
