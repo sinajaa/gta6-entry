@@ -35,44 +35,45 @@ function makeSkyTexture() {
   return texture;
 }
 
-function makeWindowGlowTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 256, 256);
-  ctx.fillStyle = '#ffcf7a';
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 8; col++) {
-      if ((row * 7 + col * 13) % 11 < 2) ctx.fillRect(col * 32 + 5, row * 64 + 12, 22, 38);
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.anisotropy = 4;
-  return texture;
-}
+const FACADE_SIZE = 512, FACADE_COLS = 8, FACADE_ROWS = 10;
+const FACADE_REPEATS = [[2, 3], [3, 6], [4, 9]];
 
-function makeFacadeTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#e8e8ee';
-  ctx.fillRect(0, 0, 256, 256);
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 8; col++) {
-      ctx.fillStyle = (row * 3 + col * 5) % 7 === 0 ? '#4a5a70' : '#2c3a4e';
-      ctx.fillRect(col * 32 + 5, row * 64 + 12, 22, 38);
+function makeFacadeTextures() {
+  const cw = FACADE_SIZE / FACADE_COLS, rh = FACADE_SIZE / FACADE_ROWS;
+  const mk = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = FACADE_SIZE;
+    return [canvas, canvas.getContext('2d')];
+  };
+  const [fc, f] = mk();
+  const [gc, g] = mk();
+  f.fillStyle = '#c9c2b2';
+  f.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE);
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE);
+  for (let row = 0; row < FACADE_ROWS; row++) {
+    for (let col = 0; col < FACADE_COLS; col++) {
+      const x = col * cw + 10, y = row * rh + 9, w = cw - 20, h = rh - 18;
+      const lit = (row * 7 + col * 13 + row * col * 3) % 4 === 0;
+      f.fillStyle = lit ? '#ffe0a0' : '#3f5670';
+      f.fillRect(x, y, w, h);
+      if (lit) { g.fillStyle = '#ffe0a0'; g.fillRect(x, y, w, h); }
+      f.fillStyle = '#e8eef5';
+      f.fillRect(x + w / 2 - 1, y, 2, h);
+      f.fillRect(x, y + h / 2 - 1, w, 2);
+      f.fillRect(x - 2, y - 2, w + 4, 2);
     }
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, row * 64, 256, 4);
+    f.fillStyle = '#e8eef5';
+    f.fillRect(0, Math.round(row * rh), FACADE_SIZE, 3);
   }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.anisotropy = 4;
-  return texture;
+  const wrap = (c) => {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  };
+  return { facade: wrap(fc), glow: wrap(gc) };
 }
 
 export function initRenderer(canvas, hudCanvas, world) {
@@ -295,18 +296,6 @@ function makeBuildingMaterial(gfx, facade, glow, ghost) {
   const material = gfx.software
     ? new THREE.MeshLambertMaterial(opts)
     : new THREE.MeshStandardMaterial({ ...opts, roughness: 0.85, metalness: 0.0 });
-  material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
-#ifdef USE_MAP
-  vec3 bsz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
-  float horiz = abs(normal.x) > 0.5 ? bsz.z : bsz.x;
-  vec2 bUv = vec2(uv.x * horiz / 256.0, uv.y * bsz.y / 128.0);
-  vMapUv = (mapTransform * vec3(bUv, 1.0)).xy;
-  #ifdef USE_EMISSIVEMAP
-  vEmissiveMapUv = (emissiveMapTransform * vec3(bUv, 1.0)).xy;
-  #endif
-#endif`);
-  };
   return material;
 }
 
@@ -315,19 +304,25 @@ export function syncGhosts(gfx, ids) {
   if (!g || !ids) return;
   const prev = g.ids;
   if (prev.length === ids.length && prev.every((v, i) => v === ids[i])) return;
-  const arr = gfx.buildings.instanceMatrix.array;
-  for (const i of prev) for (let j = 0; j < 16; j++) arr[i * 16 + j] = g.orig[i * 16 + j];
+  const touched = new Set();
+  for (const i of prev) {
+    const { mesh, local } = g.slot[i];
+    mesh.instanceMatrix.array.set(g.orig.subarray(i * 16, i * 16 + 16), local * 16);
+    touched.add(mesh);
+  }
   ids.forEach((id, n) => {
-    gfx.buildings.getMatrixAt(id, g.m);
+    const { mesh, local } = g.slot[id];
+    g.m.fromArray(g.orig, id * 16);
     g.mesh.setMatrixAt(n, g.m);
     g.mesh.setColorAt(n, g.c.set(g.colors[id]));
-    for (let j = 0; j < 16; j++) arr[id * 16 + j] = 0;
+    mesh.instanceMatrix.array.fill(0, local * 16, local * 16 + 16);
+    touched.add(mesh);
   });
   g.ids = ids.slice();
   g.mesh.count = ids.length;
   g.mesh.instanceMatrix.needsUpdate = true;
   if (g.mesh.instanceColor) g.mesh.instanceColor.needsUpdate = true;
-  gfx.buildings.instanceMatrix.needsUpdate = true;
+  for (const m of touched) m.instanceMatrix.needsUpdate = true;
 }
 
 export function buildWorldMeshes(gfx, world) {
@@ -339,35 +334,50 @@ export function buildWorldMeshes(gfx, world) {
   ground.receiveShadow = true;
   gfx.scene.add(ground);
 
-  const facade = makeFacadeTexture();
-  const buildings = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    makeBuildingMaterial(gfx, facade, makeWindowGlowTexture(), false),
-    world.buildings.length,
-  );
+  const { facade, glow } = makeFacadeTextures();
   const matrix = new THREE.Matrix4(), color = new THREE.Color();
-  world.buildings.forEach((b, i) => {
-    matrix.compose(
-      new THREE.Vector3(b.x + b.w / 2 - WORLD_W / 2, b.height / 2, b.y + b.h / 2 - WORLD_H / 2),
-      new THREE.Quaternion(),
-      new THREE.Vector3(b.w, b.height, b.h),
-    );
-    buildings.setMatrixAt(i, matrix);
-    buildings.setColorAt(i, color.set(b.color));
+  const bucketOf = (h) => (h < 64 ? 0 : h <= 128 ? 1 : 2);
+  const members = [[], [], []];
+  world.buildings.forEach((b, i) => members[bucketOf(b.height)].push(i));
+  const orig = new Float32Array(world.buildings.length * 16);
+  const slot = new Array(world.buildings.length);
+  gfx.buildingMeshes = members.map((ids, k) => {
+    const [rx, ry] = FACADE_REPEATS[k];
+    const map = facade.clone(), emissiveMap = glow.clone();
+    for (const t of [map, emissiveMap]) { t.repeat.set(rx, ry); t.needsUpdate = true; }
+    const material = makeBuildingMaterial(gfx, map, emissiveMap, false).clone();
+    material.color.set(0xffffff);
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, Math.max(1, ids.length));
+    mesh.count = ids.length;
+    ids.forEach((id, local) => {
+      const b = world.buildings[id];
+      matrix.compose(
+        new THREE.Vector3(b.x + b.w / 2 - WORLD_W / 2, b.height / 2, b.y + b.h / 2 - WORLD_H / 2),
+        new THREE.Quaternion(),
+        new THREE.Vector3(b.w, b.height, b.h),
+      );
+      mesh.setMatrixAt(local, matrix);
+      matrix.toArray(orig, id * 16);
+      mesh.setColorAt(local, color.set(b.color));
+      slot[id] = { mesh, local };
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = mesh.receiveShadow = true;
+    gfx.scene.add(mesh);
+    return mesh;
   });
-  buildings.instanceMatrix.needsUpdate = true;
-  buildings.instanceColor.needsUpdate = true;
-  buildings.castShadow = buildings.receiveShadow = true;
-  gfx.scene.add(buildings);
-  gfx.buildings = buildings;
 
-  const ghostMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), makeBuildingMaterial(gfx, facade, buildings.material.emissiveMap, true), GHOST_MAX);
+  const ghostMat = makeBuildingMaterial(gfx, facade.clone(), glow, true);
+  ghostMat.map.repeat.set(...FACADE_REPEATS[1]);
+  ghostMat.map.needsUpdate = true;
+  const ghostMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), ghostMat, GHOST_MAX);
   ghostMesh.count = 0;
   ghostMesh.frustumCulled = false;
   ghostMesh.renderOrder = 2;
   ghostMesh.setColorAt(0, color.set(0xffffff));
   gfx.scene.add(ghostMesh);
-  gfx.ghost = { mesh: ghostMesh, ids: [], orig: buildings.instanceMatrix.array.slice(), colors: world.buildings.map((b) => b.color), m: new THREE.Matrix4(), c: new THREE.Color() };
+  gfx.ghost = { mesh: ghostMesh, ids: [], orig, slot, colors: world.buildings.map((b) => b.color), m: new THREE.Matrix4(), c: new THREE.Color() };
 
   const roofs = new THREE.InstancedMesh(
     new THREE.PlaneGeometry(1, 1),
@@ -586,7 +596,7 @@ function buildProps(gfx, world) {
   };
 
   const trees = [];
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 280; i++) {
     const s = strips.pop();
     const p = spot(s, 0, (rand() - 0.5) * 12);
     trees.push({ x: p.x, y: p.y, scale: 0.8 + rand() * 0.45, tint: 0.85 + rand() * 0.3 });
@@ -615,24 +625,54 @@ function buildProps(gfx, world) {
   gfx.scene.add(treeMesh);
 
   const boxes = [], cyls = [];
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 220; i++) {
     const s = strips.pop(), p = spot(s, 12, (rand() - 0.5) * 10);
     boxes.push({ x: p.x, y: POLE_HEIGHT / 2, z: p.y, sx: 2, sy: POLE_HEIGHT, sz: 2, yaw: 0, color: '#3b3f45' });
     cyls.push({ x: p.x + (s.horiz ? 0 : s.road * 4), y: POLE_HEIGHT + 1, z: p.y + (s.horiz ? s.road * 4 : 0), sx: 3.5, sy: 2.5, sz: 3.5, color: '#fff2b0' });
   }
-  for (let i = 0; i < 40; i++) {
+  const BENCH_COLORS = ['#8a5a33', '#5b7f3a', '#3f5f8f', '#a8483a'];
+  for (let i = 0; i < 80; i++) {
     const s = strips.pop(), p = spot(s, -8, (rand() - 0.5) * 8);
-    boxes.push({ x: p.x, y: 4, z: p.y, sx: 16, sy: 8, sz: 5, yaw: p.angle, color: '#8a5a33' });
+    boxes.push({ x: p.x, y: 4, z: p.y, sx: 16, sy: 8, sz: 5, yaw: p.angle, color: BENCH_COLORS[i % 4] });
   }
-  for (let i = 0; i < 30; i++) {
+  const HYDRANT_COLORS = ['#e0262b', '#f3c613', '#2b7de0'];
+  for (let i = 0; i < 70; i++) {
     const s = strips.pop(), p = spot(s, 11, (rand() - 0.5) * 10);
-    cyls.push({ x: p.x, y: 5, z: p.y, sx: 3.5, sy: 10, sz: 3.5, color: '#e0262b' });
+    cyls.push({ x: p.x, y: 5, z: p.y, sx: 3.5, sy: 10, sz: 3.5, color: HYDRANT_COLORS[i % 3] });
   }
-  for (let i = 0; i < 12; i++) {
+  const BIN_COLORS = ['#2f6f4f', '#3a3f48', '#4a6fa5', '#8a8f96'];
+  for (let i = 0; i < 60; i++) {
+    const s = strips.pop(), p = spot(s, -10, (rand() - 0.5) * 12);
+    boxes.push({ x: p.x, y: 6, z: p.y, sx: 8, sy: 12, sz: 8, yaw: 0, color: BIN_COLORS[i % 4] });
+  }
+  const PLANTER_COLORS = ['#b5651d', '#8c8173', '#6f7f8f', '#c98b4a'];
+  for (let i = 0; i < 40; i++) {
+    const s = strips.pop(), p = spot(s, 9, (rand() - 0.5) * 12);
+    boxes.push({ x: p.x, y: 5, z: p.y, sx: s.horiz ? 20 : 8, sy: 10, sz: s.horiz ? 8 : 20, yaw: 0, color: PLANTER_COLORS[i % 4] });
+    boxes.push({ x: p.x, y: 11, z: p.y, sx: s.horiz ? 16 : 5, sy: 4, sz: s.horiz ? 5 : 16, yaw: 0, color: '#3f9a4a' });
+  }
+  for (let i = 0; i < 50; i++) {
+    const s = strips.pop(), p = spot(s, 13, (rand() - 0.5) * 8);
+    boxes.push({ x: p.x, y: 25, z: p.y, sx: 2.5, sy: 50, sz: 2.5, yaw: 0, color: '#5a4630' });
+    boxes.push({ x: p.x, y: 46, z: p.y, sx: s.horiz ? 20 : 2, sy: 2, sz: s.horiz ? 2 : 20, yaw: 0, color: '#5a4630' });
+  }
+  const NEON_COLORS = ['#ff2d95', '#18e0ff', '#ffe03a'];
+  const signs = [];
+  for (let i = 0; i < 30; i++) {
+    const s = strips.pop(), p = spot(s, -13, (rand() - 0.5) * 8);
+    signs.push({ x: p.x, y: 22 + rand() * 8, z: p.y, yaw: p.angle, color: NEON_COLORS[i % 3] });
+  }
+  const signMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(18, 8), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), signs.length);
+  signs.forEach((n, i) => place(signMesh, i, n.x, n.y, n.z, 1, 1, 1, n.yaw, n.color));
+  signMesh.frustumCulled = false;
+  signMesh.instanceMatrix.needsUpdate = true;
+  signMesh.instanceColor.needsUpdate = true;
+  gfx.scene.add(signMesh);
+  for (let i = 0; i < 24; i++) {
     const s = strips.pop(), p = spot(s, -6, 0);
     boxes.push({ x: p.x, y: 13, z: p.y, sx: s.horiz ? 30 : 10, sy: 26, sz: s.horiz ? 10 : 30, yaw: 0, color: '#4b8fb5' });
   }
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 80; i++) {
     const s = strips.pop(), p = spot(s, 5, 0);
     boxes.push({ x: p.x, y: CAR_SIZE.height / 2 + 2, z: p.y, sx: CAR_SIZE.length, sy: CAR_SIZE.height, sz: CAR_SIZE.width, yaw: p.angle, color: PROP_CAR_COLORS[Math.floor(rand() * PROP_CAR_COLORS.length)] });
     blobs.push({ x: p.x, y: p.y, sx: 32, sy: 15, angle: p.angle });

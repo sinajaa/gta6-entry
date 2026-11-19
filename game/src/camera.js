@@ -21,8 +21,8 @@ export function updateCamera(cam, target, world, dt, driving = false) {
   cam.y = Math.max(0, Math.min(world.height - cam.visH, cam.y));
 }
 
-const WALK = { up: 78, back: 230, fov: 60, lookY: 26 };
-const DRIVE = { up: 96, back: 290, fov: 64, lookY: 22 };
+const WALK = { up: 58, back: 178, fov: 62, lookY: 22 };
+const DRIVE = { up: 72, back: 226, fov: 66, lookY: 18 };
 const FOV_KICK = 6, KICK_SPEED = 0.8 * 320, PULL_DIST = 120, GHOST_MAX = 8, CAM_NEAR = 2, CAM_FAR = 2400;
 const MIN_DIST = 14, RAY_STEP = 8, RAY_SIDE = 10, RAY_MARGIN = 4;
 
