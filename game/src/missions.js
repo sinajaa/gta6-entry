@@ -61,6 +61,16 @@ export const MISSION_LIST = [
     intro: 'Target kabur pakai mobil cepat. Hentikan dia sebelum waktu habis!',
     win: 'Target tertangkap. Hadiah cair.', lose: 'Target hilang di kejauhan...',
   },
+  {
+    id: 'pizza', kind: 'side', title: 'KIRIM PIZZA (3 TITIK)', who: 'Pabrik Pizza', reward: 250, limit: 180,
+    intro: 'Antar 3 pizza hangat ke 3 alamat sebelum dingin. Bonus kalau cepat!',
+    win: 'Tiga pizza sampai tepat waktu. Bonus buat pelayan tercepat!', lose: 'Pizza basi. Pelanggan marah.',
+  },
+  {
+    id: 'repo', kind: 'side', title: 'REPOSESSI MOBIL', who: 'Diablo Repo', reward: 1500, limit: 180,
+    intro: 'Curi mobil bertanda, antar ke garasi sebelum polisi datang — jangan sampai rusak!',
+    win: 'Mobil utuh di garasi. Gaji cair penuh.', lose: 'Mobil hancur atau ketinggalan.',
+  },
 ];
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -101,6 +111,7 @@ function driveLane(world, c, speed, dt) {
 export function createMissions(world, ui, audio) {
   let cursor = (ui.missionsDone || 0) % MISSION_LIST.length;
   let gap = 0;
+  let startHp = 100; // kondisi mobil repo saat diambil — dipakai untuk deteksi "rusak".
   const say = (who, text) => ui.toast(who + ': ' + text, 4.5);
 
   const m = {
@@ -400,6 +411,56 @@ export function createMissions(world, ui, audio) {
       markers: (a) => [{ x: a.car.x, y: a.car.y, scale: 0.6 }],
       target: (a) => a.car,
     },
+
+    // KIRIM PIZZA: antar ke 3 titik berurutan sebelum dingin, bonus kalau cepat.
+    pizza: {
+      update(a, f) {
+        const cur = a.points[a.stage];
+        if (dist(f, cur) >= REACH) return;
+        a.stage++;
+        if (a.stage >= a.points.length) {
+          // Bonus uang tunai kalau selesai jauh sebelum batas waktu.
+          const left = a.def.limit - a.t;
+          a.bonus = Math.max(0, Math.round(left)) * 5;
+          ui.toast(`SEMUA PIZZA TERKIRIM! BONUS +$${a.bonus}`);
+          finish();
+        } else {
+          ui.toast(`PIZZA ${a.stage}/${a.points.length} DITERIMA`);
+        }
+      },
+      text: (a) => `ANTAR ${a.stage + 1}/3 ${Math.round(dist(m.focus, a.points[a.stage]))}m`,
+      markers: (a) => a.points.slice(a.stage, a.stage + 1).map((p) => ({ x: p.x, y: p.y, scale: 1 })),
+      target: (a) => a.points[a.stage],
+    },
+
+    // REPOSESSI MOBIL: curi mobil bertanda, bawa ke garasi tanpa merusaknya.
+    repo: {
+      update(a, f, dt) {
+        if (a.stage === 0) {
+          // Mendekati mobil bertanda → curi (mobil target hilang, pemain menyetirnya).
+          if (dist(f, a.car) >= REACH) return;
+          a.stage = 1;
+          const cp = m.focus.car;
+          startHp = cp ? (cp.hp ?? cp.maxHp ?? 100) : 100;
+          const i = world.cars.indexOf(a.car);
+          if (i >= 0) world.cars.splice(i, 1);
+          addHeat(world, 120, 'repo');
+          ui.toast('MOBIL DICURI — BAWA KE GARASI UTUH!');
+          say(a.def.who, 'Jangan sampai lecet! Polisi memburumu.');
+        } else {
+          // Lacak kondisi mobil yang dikemudikan pemain.
+          const cp = m.focus.car;
+          const hp = cp ? (cp.hp ?? cp.maxHp ?? 100) : 100;
+          if (hp <= startHp * 0.35) { fail(); return; }
+          if (dist(m.focus, a.garage) < 60) finish();
+        }
+      },
+      text: (a) => a.stage
+        ? `BAWA KE GARASI ${Math.round(dist(m.focus, a.garage))}m — KONDISI ${Math.max(0, Math.round(100 * (m.focus.car ? (m.focus.car.hp ?? 100) : 100) / startHp))}%`
+        : `CURI MOBIL ${Math.round(dist(m.focus, a.car))}m`,
+      markers: (a) => a.stage ? [{ x: a.garage.x, y: a.garage.y, scale: 1 }] : [{ x: a.car.x, y: a.car.y, scale: 0.7 }],
+      target: (a) => (a.stage ? a.garage : a.car),
+    },
   };
 
   function init(a, f, w) {
@@ -452,6 +513,16 @@ export function createMissions(world, ui, audio) {
       const dir = (p.horizontal ? p.x - f.x : p.y - f.y) >= 0 ? 1 : -1;
       a.car = laneCar(w, p, dir, 'mark', '#ff6b1a', 240);
       a.car.hp = 150; a.hold = 0; a.cars.push(a.car);
+    } else if (a.id === 'pizza') {
+      a.points = [];
+      let from = f;
+      for (let i = 0; i < 3; i++) { const p = spot(w, from, 250, 500); a.points.push(p); from = p; }
+    } else if (a.id === 'repo') {
+      const p = pick(ptsBetween(w, f, 260, 450));
+      const dir = (p.horizontal ? p.x - f.x : p.y - f.y) >= 0 ? 1 : -1;
+      a.car = laneCar(w, p, dir, 'mark', '#22d3ee', 0);
+      a.car.hp = 100; a.cars.push(a.car);
+      a.garage = w.garage || { x: 1312, y: 1450 };
     }
   }
 
@@ -464,7 +535,7 @@ export function createMissions(world, ui, audio) {
   }
 
   function finish() {
-    const a = m.active, reward = a.def.reward;
+    const a = m.active, reward = a.def.reward + (a.bonus || 0);
     const isSide = a.def.kind === 'side';
     ui.addMoney(reward);
     ui.toast(`MISI SELESAI +$${reward}`);

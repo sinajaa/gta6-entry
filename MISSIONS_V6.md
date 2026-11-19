@@ -47,6 +47,22 @@ A timed car-chase where the target flees fast and must be stopped before the tim
 - The shared mission `limit` of `90s` is the expiry: if the target is not stopped in time, the job `fail()`s.
 - Reward `$1000`; the target car is cleaned up on finish/fail like the story `chase`/`execute` cars.
 
+**5. `pizza` — KIRIM PIZZA (3 TITIK)**
+
+A small timed delivery side job:
+
+- Three drop points spawn in a chain (`spot(w, from, 250, 500)` each), the HUD marker advances to the next point as each pizza is delivered, and delivering all three triggers `finish()`.
+- A **cash bonus** is paid on top of the base `$250` for finishing quickly: the remaining `limit` is converted via `a.bonus = round(left) * 5` and folded into the reward inside `finish()`.
+- The `180s` limit is the shared mission expiry.
+
+**6. `repo` — REPOSESSI MOBIL**
+
+A steal-and-return side job that reuses the garage location:
+
+- A cyan parked `mark` car spawns `260–450` units away (`speed 0`, like the story `execute`). Reaching it "steals" it: the marked car is removed from `world.cars`, `addHeat(world, 120, 'repo')` raises the wanted level, and the player drives it toward the garage.
+- **Wrecking** is tracked against the car's starting health (captured at steal time into `startHp`); if `hp` drops to `35%` of it, the job `fail()`s.
+- Reaching the garage (`dist < 60`, garage resolved from `world.garage` set by `extras.js`) calls `finish()`. Reward `$1500`.
+
 ### Checkpoint respawn
 
 - On `fail()`, if the active mission has advanced past `stage 0`, the current objective state is captured into `m.checkpoint` — `stage`, and per-mission objective fields (`dest`, `pickup`, `points`, and heist wave timers `wave` / `waveT` / `waveDuration`).
@@ -61,6 +77,6 @@ A timed car-chase where the target flees fast and must be stopped before the tim
 
 ## Files changed
 
-- `game/src/missions.js` — four new `MISSION_LIST` entries, the `heist`, `taxi`, `stunt`, and `bounty` handlers, their `init` branches, `startSide`, `playerCar`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
+- `game/src/missions.js` — six new `MISSION_LIST` entries, the `heist`, `taxi`, `stunt`, `bounty`, `pizza`, and `repo` handlers, their `init` branches, `startSide`, `playerCar`, the per-mission `bonus` reward in `finish()`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
 - `game/src/ui.js` — `logIdx`, `logSelect`, `logStartSelected`, `logClick`, log-open key handling, and the rewrite of `drawMissionLog` to select/start side jobs.
 - `game/src/main.js` — pointer-down routing to `ui.logClick` when the log is open.
