@@ -303,7 +303,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
       fog.color.copy(b.fog).multiplyScalar(clamp(bg, 0, 1.6));
       const l = fog.color.r * 0.3 + fog.color.g * 0.59 + fog.color.b * 0.11;
       fog.color.lerp(lum.setRGB(l, l, l * 1.05), 0.5 * rain);
-      fog.near = b.fogNear * (1 - 0.45 * rain); fog.far = b.fogFar * (1 - 0.4 * rain);
+      fog.density = b.fogDensity * (1 + 1.2 * rain);
       void RAIN_GREY;
     } else if (wasActive) {
       scene.backgroundIntensity = 1;

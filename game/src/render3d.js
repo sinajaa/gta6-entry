@@ -4,10 +4,13 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';
 
-const GROUND_COLORS = { [T.ROAD]: '#9aa0a6', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
+const GROUND_COLORS = { [T.ROAD]: '#565b60', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
 const HORIZON = 0xf0b88a;
 const SHADOW_HALF = 560;
+const SHADOW_MIN = 260, SHADOW_MAX = 660;
 const SUN_OFFSET = new THREE.Vector3(-760, 460, -540);
+const MOON_DIR = new THREE.Vector3(560, 520, 300);
+const SKY_RADIUS = 1200;
 const ROOF_BOOST = 1.25;
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
@@ -36,6 +39,86 @@ function makeSkyTexture() {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+}
+
+// Sky dome: a large inverted sphere drawn with a gradient shader so the sky blends from
+// zenith to horizon like the old canvas backdrop, with a soft sun disc, a moon disc, stars
+// and a horizon glow — all driven from the same day/night palette as the fog and hemi light.
+const skyVert = /* glsl */ `
+varying vec3 vDir;
+void main() {
+  vDir = normalize(position);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const skyFrag = /* glsl */ `
+varying vec3 vDir;
+uniform vec3 uTop;
+uniform vec3 uMid;
+uniform vec3 uHor;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform float uNight;
+uniform float uStarAmt;
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+void main() {
+  vec3 d = normalize(vDir);
+  float h = clamp(d.y, -1.0, 1.0);
+  float t = pow(clamp(1.0 - h, 0.0, 1.0), 0.62);
+  vec3 col = mix(uTop, uMid, smoothstep(0.0, 0.32, t));
+  col = mix(col, uHor, smoothstep(0.3, 0.62, t));
+  // stars in the upper dome
+  float star = 0.0;
+  if (uStarAmt > 0.02) {
+    vec2 sp = d.xz / max(0.0001, d.y + 1.2);
+    float g = hash21(floor(sp * 14.0));
+    star = step(0.985, g) * smoothstep(0.02, 0.05, uStarAmt);
+    col += vec3(0.8, 0.85, 1.0) * star * (0.4 + 0.6 * hash21(floor(sp * 14.0) + 7.0));
+  }
+  // horizon glow band
+  col += uHor * pow(1.0 - abs(h), 14.0) * 0.35;
+  // sun disc + halo
+  float sd = max(dot(d, normalize(uSunDir)), 0.0);
+  float disc = smoothstep(0.9992, 0.9999, sd);
+  float halo = pow(sd, 120.0);
+  col += uSunColor * (disc * 1.0 + halo * 0.8);
+  // moon disc + halo
+  float md = max(dot(d, normalize(-uSunDir)), 0.0);
+  float mdisc = smoothstep(0.9994, 1.0, md) * (1.0 - uNight);
+  float mhalo = pow(md, 60.0) * (1.0 - uNight) * 0.4;
+  col += vec3(0.7, 0.75, 0.95) * (mdisc + mhalo);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function makeSkyDome(software) {
+  if (software) {
+    const texture = makeSkyTexture();
+    return { dome: null, background: texture };
+  }
+  const geo = new THREE.SphereGeometry(SKY_RADIUS, 32, 16);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: skyVert,
+    fragmentShader: skyFrag,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: true,
+    fog: false,
+    toneMapped: false,
+    uniforms: {
+      uTop: { value: new THREE.Color('#2f5f9e') },
+      uMid: { value: new THREE.Color('#7fa6c9') },
+      uHor: { value: new THREE.Color(HORIZON) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunColor: { value: new THREE.Color('#fff1dc') },
+      uNight: { value: 0 },
+      uStarAmt: { value: 0 },
+    },
+  });
+  const dome = new THREE.Mesh(geo, mat);
+  dome.frustumCulled = false;
+  dome.renderOrder = -1;
+  return { dome, mat, background: null };
 }
 
 const DAY_SECONDS = 300;
@@ -142,7 +225,16 @@ function drawSky(gfx, top, mid, hor) {
     ctx.fillStyle = 'rgba(255,224,150,0.7)';
     for (let i = 0; i < 160; i++) ctx.fillRect(Math.floor(rnd() * W), base - 4 + Math.floor(rnd() * 30), 1, 1);
   }
-  gfx.scene.background.needsUpdate = true;
+  if (gfx.scene.background) gfx.scene.background.needsUpdate = true;
+  if (gfx.skyMat) {
+    const u = gfx.skyMat.uniforms;
+    u.uTop.value.copy(top);
+    u.uMid.value.copy(mid);
+    u.uHor.value.copy(hor);
+    u.uNight.value = night;
+    u.uStarAmt.value = gfx.starAmt || 0;
+    u.uSunDir.value.copy(gfx.skySunDir || SUN_DIR);
+  }
 }
 
 const tmpA = C('#000'), tmpB = C('#000');
@@ -169,10 +261,19 @@ function updateDayNight(gfx) {
   const isSun = elev >= 0;
   const e = Math.abs(elev);
   const dirX = isSun ? -Math.cos(ang) : Math.cos(ang);
-  gfx.sun.position.set(dirX * 760, Math.max(e, 0.1) * 760, -400);
-  SUN_DIR.copy(gfx.sun.position);
+  SUN_DIR.set(dirX * 760, Math.max(e, 0.1) * 760, -400);
   gfx.sun.color.copy(isSun ? mixed.sunC : MOON_COLOR);
   gfx.sun.intensity = isSun ? 3.4 * smooth(0, 0.3, e) : 0.55 * smooth(0, 0.3, e);
+
+  // Moon: a second directional light that complements the sun at night. Only one casts
+  // shadows at a time, so shadow cost stays at a single map.
+  if (gfx.moon) {
+    gfx.moon.color.copy(MOON_COLOR);
+    gfx.moon.intensity = isSun ? 0 : 0.55 * smooth(0, 0.3, e);
+    gfx.moon.castShadow = !isSun && !gfx.software;
+    gfx.sun.castShadow = isSun && !gfx.software;
+  }
+  gfx.skySunDir = isSun ? SUN_DIR.clone().normalize() : MOON_DIR.clone().normalize();
 
   gfx.night = Math.min(1, Math.max(0, (0.12 - elev) / 0.3));
   gfx.hemi.color.copy(mixed.hemiSky);
@@ -181,8 +282,8 @@ function updateDayNight(gfx) {
   gfx.ambient.intensity = lerpN(7);
   gfx.renderer.toneMappingExposure = lerpN(9);
   gfx.scene.fog.color.copy(mixed.hor);
-  gfx.scene.fog.near = 600 - 300 * gfx.night;
-  gfx.scene.fog.far = 2200 - 700 * gfx.night;
+  // Exponential fog matched to the sky horizon colour; density rises at night.
+  gfx.scene.fog.density = 0.00034 + 0.00028 * gfx.night;
 
   if (Math.abs(h - gfx.skyHour) >= SKY_REDRAW_STEP || gfx.frozenHour || gfx.skyHour < 0) {
     drawSky(gfx, mixed.top, mixed.mid, mixed.hor);
@@ -191,7 +292,7 @@ function updateDayNight(gfx) {
 
   gfx.base = {
     exp: gfx.renderer.toneMappingExposure, sun: gfx.sun.intensity, hemi: gfx.hemi.intensity,
-    fog: gfx.scene.fog.color.clone(), fogNear: gfx.scene.fog.near, fogFar: gfx.scene.fog.far,
+    fog: gfx.scene.fog.color.clone(), fogDensity: gfx.scene.fog.density,
   };
   const n = gfx.night;
   for (const mat of gfx.buildingMats) mat.emissiveIntensity = gfx.windowBase * (1 + 3.6 * n);
@@ -285,8 +386,10 @@ export function initRenderer(canvas, hudCanvas, world) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = makeSkyTexture();
-  scene.fog = new THREE.Fog(HORIZON, 600, 2200);
+  const sky = makeSkyDome(software);
+  scene.background = sky.background;
+  if (sky.dome) scene.add(sky.dome);
+  scene.fog = new THREE.FogExp2(HORIZON, 0.00034);
   const hemi = new THREE.HemisphereLight(0x8fb4e8, 0x4a3a2a, 0.55);
   const ambient = new THREE.AmbientLight(0xffffff, 0.08);
   scene.add(hemi, ambient);
@@ -299,24 +402,191 @@ export function initRenderer(canvas, hudCanvas, world) {
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.8;
-  Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 100, far: 1800 });
+  fitShadowCamera(sun, SHADOW_HALF);
   scene.add(sun, sun.target);
 
+  // A dedicated moon directional light so night scenes get a cool, soft fill with its own shadows.
+  const moon = new THREE.DirectionalLight(MOON_COLOR, 0.0);
+  moon.position.copy(MOON_DIR);
+  moon.target.position.set(0, 0, 0);
+  moon.castShadow = false;
+  moon.shadow.mapSize.set(shadowSize, shadowSize);
+  moon.shadow.bias = -0.0006;
+  moon.shadow.normalBias = 0.8;
+  fitShadowCamera(moon, SHADOW_HALF);
+  scene.add(moon, moon.target);
+
   const camera = new THREE.PerspectiveCamera(60, 960 / 540, 2, 2400);
-  const gfx = { renderer, scene, camera, sun, software, shadowSize, frameNo: 0, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1 };
+  const gfx = { renderer, scene, camera, sun, moon, software, shadowSize, frameNo: 0, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1, skyMat: sky.mat || null };
   const hourParam = parseFloat(new URLSearchParams(location.search).get('hour'));
   const frozen = Number.isFinite(hourParam);
   Object.assign(gfx, {
-    hemi, ambient, skyCtx: scene.background.image.getContext('2d'), skyHour: -1, dayKey: null,
+    hemi, ambient, skyCtx: scene.background ? scene.background.image.getContext('2d') : null, skyHour: -1, dayKey: null,
     frozenHour: frozen, hour: frozen ? ((hourParam % 24) + 24) % 24 : START_HOUR, lastClock: performance.now(),
     night: 0, windowBase: software ? 0.35 : 0.6,
   });
+  if (!software) setupBloom(gfx);
   buildWorldMeshes(gfx, world);
   buildCombatFx(gfx);
   gfx.buildingMats = [...gfx.buildingMeshes.map((m) => m.material), gfx.ghost.mesh.material];
   updateDayNight(gfx);
   gfx.metrics = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
   return gfx;
+}
+
+// Fits a directional light's orthographic shadow camera to a fixed half-extent, so the shadow
+// frustum tracks the player without wasting texel density on the whole city.
+function fitShadowCamera(light, half) {
+  light.shadow.camera.left = -half;
+  light.shadow.camera.right = half;
+  light.shadow.camera.top = half;
+  light.shadow.camera.bottom = -half;
+  light.shadow.camera.near = 40;
+  light.shadow.camera.far = 2200;
+  light.shadow.camera.updateProjectionMatrix();
+}
+
+// Re-fits the active shadow light so its camera follows the player and scales with camera distance.
+function fitActiveShadow(gfx) {
+  const light = gfx.sun.castShadow ? gfx.sun : gfx.moon;
+  if (!light || !light.castShadow) return;
+  const c = gfx.camera.position;
+  const dist = Math.hypot(c.x, c.z);
+  const half = Math.min(SHADOW_MAX, Math.max(SHADOW_MIN, dist + 320));
+  const cam = light.shadow.camera;
+  if (cam && Math.abs(cam.right - half) > 1) {
+    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+    cam.updateProjectionMatrix();
+  }
+  const dir = light === gfx.sun ? (gfx.sunDirOverride || SUN_DIR) : MOON_DIR;
+  light.position.copy(dir).add(c);
+  gfx.sun.target.position.set(c.x, 0, c.z);
+  if (gfx.moon) gfx.moon.target.position.set(c.x, 0, c.z);
+}
+
+// ---------------------------------------------------------------- bloom
+// A cheap additive bloom: render to a half-size target, keep only highlights, blur twice
+// (low-res separable 9-tap Gaussian) and composite back over the scene. Uses the renderer's own
+// final framebuffer via a full-screen triangle so no EffectComposer is needed.
+const bloomVert = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position, 1.0);
+}`;
+
+const brightFrag = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform float uThreshold;
+varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(tDiffuse, vUv).rgb;
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  float m = smoothstep(uThreshold, uThreshold + 0.4, l);
+  gl_FragColor = vec4(c * m, 1.0);
+}`;
+
+const blurFrag = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform vec2 uDir;
+uniform vec2 uTexel;
+varying vec2 vUv;
+void main() {
+  vec3 s = texture2D(tDiffuse, vUv).rgb * 0.227027;
+  float w = 0.227027;
+  for (int i = 1; i <= 4; i++) {
+    float wt = exp(-0.5 * float(i * i) / 2.25);
+    vec2 o = uDir * uTexel * float(i);
+    s += texture2D(tDiffuse, vUv + o).rgb * wt;
+    s += texture2D(tDiffuse, vUv - o).rgb * wt;
+    w += 2.0 * wt;
+  }
+  gl_FragColor = vec4(s / w, 1.0);
+}`;
+
+const compositeFrag = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform sampler2D tBloom;
+uniform float uStrength;
+varying vec2 vUv;
+void main() {
+  vec3 base = texture2D(tDiffuse, vUv).rgb;
+  vec3 bloom = texture2D(tBloom, vUv).rgb;
+  gl_FragColor = vec4(base + bloom * uStrength, 1.0);
+}`;
+
+function setupBloom(gfx) {
+  const W = 960, H = 540;
+  const opts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true, stencilBuffer: false };
+  const sceneRT = new THREE.WebGLRenderTarget(W, H, { ...opts, type: THREE.HalfFloatType });
+  // Match the renderer's output colour space so tone mapping + sRGB are applied into this buffer.
+  sceneRT.texture.colorSpace = THREE.SRGBColorSpace;
+  const half = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
+  const brightRT = new THREE.WebGLRenderTarget(W / 2, H / 2, { ...half, type: THREE.HalfFloatType });
+  const blurA = new THREE.WebGLRenderTarget(W / 2, H / 2, { ...half, type: THREE.HalfFloatType });
+  const blurB = new THREE.WebGLRenderTarget(W / 2, H / 2, { ...half, type: THREE.HalfFloatType });
+
+  const quadGeo = new THREE.BufferGeometry();
+  quadGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+  quadGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 2, 0, 0, 2]), 2));
+
+  const brightMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: brightFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, uThreshold: { value: 0.85 } } });
+  const blurMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: blurFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2(1, 0) }, uTexel: { value: new THREE.Vector2(1 / (W / 2), 1 / (H / 2)) } } });
+  const compMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: compositeFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, tBloom: { value: null }, uStrength: { value: 0.55 } } });
+  compMat.outputColorSpace = THREE.SRGBColorSpace;
+
+  const brightQuad = new THREE.Mesh(quadGeo, brightMat);
+  brightQuad.frustumCulled = false;
+  const blurQuad = new THREE.Mesh(quadGeo, blurMat);
+  blurQuad.frustumCulled = false;
+  const compQuad = new THREE.Mesh(quadGeo, compMat);
+  compQuad.frustumCulled = false;
+
+  const ppScene = new THREE.Scene();
+  ppScene.add(compQuad, brightQuad, blurQuad);
+  const ppCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  gfx.ppScene = ppScene;
+  gfx.ppCamera = ppCamera;
+  gfx.bloom = { sceneRT, brightRT, blurA, blurB, brightMat, blurMat, compMat, brightQuad, blurQuad, compQuad };
+}
+
+// Renders the scene into the bloom scene target, extracts and blurs highlights, and composites
+// the result to the screen. Replaces the direct renderer.render() call for hardware renderers.
+function renderBloom(gfx) {
+  const b = gfx.bloom;
+  const renderer = gfx.renderer;
+  const renderScene = () => renderer.render(gfx.scene, gfx.camera);
+
+  // 1. Scene -> sceneRT (tone mapped + sRGB).
+  renderer.setRenderTarget(b.sceneRT);
+  renderScene();
+
+  // 2. Bright pass (half size).
+  b.brightMat.uniforms.tDiffuse.value = b.sceneRT.texture;
+  b.brightQuad.visible = true; b.blurQuad.visible = false; b.compQuad.visible = false;
+  renderer.setRenderTarget(b.brightRT);
+  renderer.render(gfx.ppScene, gfx.ppCamera);
+
+  // 3. Horizontal blur.
+  b.blurMat.uniforms.tDiffuse.value = b.brightRT.texture;
+  b.blurMat.uniforms.uDir.value.set(1, 0);
+  b.brightQuad.visible = false; b.blurQuad.visible = true; b.compQuad.visible = false;
+  renderer.setRenderTarget(b.blurA);
+  renderer.render(gfx.ppScene, gfx.ppCamera);
+
+  // 4. Vertical blur.
+  b.blurMat.uniforms.tDiffuse.value = b.blurA.texture;
+  b.blurMat.uniforms.uDir.value.set(0, 1);
+  renderer.setRenderTarget(b.blurB);
+  renderer.render(gfx.ppScene, gfx.ppCamera);
+
+  // 5. Composite to screen.
+  b.compMat.uniforms.tDiffuse.value = b.sceneRT.texture;
+  b.compMat.uniforms.tBloom.value = b.blurB.texture;
+  b.brightQuad.visible = false; b.blurQuad.visible = false; b.compQuad.visible = true;
+  renderer.setRenderTarget(null);
+  renderer.render(gfx.ppScene, gfx.ppCamera);
 }
 
 const TRACER_N = 32, FLASH_N = 8, SPARK_N = 48;
@@ -1450,15 +1720,18 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
+  if (gfx.moon) gfx.moon.target.position.set(tx, 0, tz);
   updateDayNight(gfx);
   gfx.sun.position.set(tx, 0, tz).add(gfx.sunDirOverride || SUN_DIR);
+  if (gfx.moon) gfx.moon.position.set(tx, 0, tz).add(MOON_DIR);
+  fitActiveShadow(gfx);
   syncCarLights(gfx, world);
   if (gfx.beforeDraw) gfx.beforeDraw();
   if (gfx.interiorBefore) gfx.interiorBefore();
   if (gfx.hemi.intensity < 0.40) gfx.hemi.intensity = 0.40;
   if (gfx.ambient.intensity < 0.14) gfx.ambient.intensity = 0.14;
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
-  gfx.renderer.render(gfx.scene, gfx.camera);
+  if (gfx.bloom) renderBloom(gfx); else gfx.renderer.render(gfx.scene, gfx.camera);
   if (gfx.interiorAfter) gfx.interiorAfter();
   if (combat) combat.clearShake(gfx.camera);
   drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera, combat);
