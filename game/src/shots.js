@@ -126,8 +126,8 @@ const SHOTS = {
   },
 
   firefight: {
-    light: { hemi: 0.02, ambient: 0, sun: 13, exposure: 2.15, sunColor: '#ffc27a', sunDir: [-650, 140, 250], hemiSky: '#6a86b8', hemiGnd: '#1e1410' },
-    hour: 17.2,
+    light: { hemi: 0.38, ambient: 0.16, sun: 9.5, exposure: 2.45, sunColor: '#ff9a5a', sunDir: [-650, 120, 250], hemiSky: '#8a72b0', hemiGnd: '#241418' },
+    hour: 18.9,
     setup(c) {
       const { player, combat, world } = c;
       player.car = null;
