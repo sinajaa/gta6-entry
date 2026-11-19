@@ -1,11 +1,14 @@
 // extras.js — garasi, paket collectible, dan cuaca (hujan, jalan basah, petir)
 // Garasi, paket, dan cuaca di sini dikerjakan sebagai tambahan kedalaman gameplay.
 import * as THREE from '../vendor/three.module.min.js';
-import { TILE, T, tileAt, WORLD_W, WORLD_H } from './world.js';
+import { TILE, T, tileAt, districtAt, WORLD_W, WORLD_H } from './world.js';
 import { GARAGE_ROWS } from './ui.js';
+import { isFlyoverActive, skipFlyover } from './camera.js';
 
 export const PACKAGE_COUNT = 12;
 const PACKAGE_REWARD = 100;
+export const TOKEN_COUNT = 6;
+const TOKEN_REWARD = 250;
 const GARAGE = { x: 1312, y: 1450, r: 38 };
 const PRICE = { repair: 150, paint: 100, nitro: 400 };
 const PICK_FOOT = 26, PICK_CAR = 36;
@@ -35,6 +38,27 @@ function placePackages(world) {
         break;
       }
     }
+  }
+  return out;
+}
+
+// Token tersembunyi: enam keping tersebar merata di tiga distrik, terselip di trotoar/halaman
+// (tidak di jalan), jauh dari garasi/spawn/paket. Memberi uang dan dihitung di HUD.
+function placeTokens(world) {
+  const rand = rng(606), out = [];
+  const perDistrict = [0, 0, 0], want = TOKEN_COUNT / 3;
+  while (out.length < TOKEN_COUNT) {
+    const x = (0.5 + rand() * 79) * TILE, y = (0.5 + rand() * 79) * TILE;
+    const d = districtAt(x, y);
+    if (perDistrict[d] >= want + 1) continue;
+    const t = tileAt(world, x, y);
+    if (t !== T.SIDEWALK && t !== T.GRASS) continue;
+    if (Math.hypot(x - GARAGE.x, y - GARAGE.y) < 140) continue;
+    if (Math.hypot(x - SPAWN[0], y - SPAWN[1]) < 140) continue;
+    if (out.some((p) => Math.hypot(p.x - x, p.y - y) < 260)) continue;
+    if (world.packages.some((p) => Math.hypot(p.x - x, p.y - y) < 120)) continue;
+    out.push({ x, y, got: false });
+    perDistrict[d]++;
   }
   return out;
 }
@@ -109,6 +133,10 @@ export function createExtras({ world, player, ui, audio, gfx }) {
   const countGot = () => world.packages.filter((p) => p.got).length;
   ui.pkCount = countGot();
 
+  world.tokens = placeTokens(world);
+  ui.tkTotal = TOKEN_COUNT;
+  ui.tkCount = 0;
+
   const scene = gfx.scene;
   const dummy = new THREE.Object3D();
   const add = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false };
@@ -126,6 +154,9 @@ export function createExtras({ world, player, ui, audio, gfx }) {
   const pkBox = new THREE.InstancedMesh(new THREE.BoxGeometry(11, 11, 11), new THREE.MeshBasicMaterial({ color: 0xffd21f, toneMapped: false, fog: false }), PACKAGE_COUNT);
   const pkBeam = new THREE.InstancedMesh(new THREE.CylinderGeometry(3.5, 3.5, 70, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe066, opacity: 0.35, side: THREE.DoubleSide, ...add }), PACKAGE_COUNT);
   for (const m of [pkBox, pkBeam]) { m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
+
+  const tkMesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(6, 0), new THREE.MeshBasicMaterial({ color: 0xe8b32a, toneMapped: false, fog: false, transparent: true, opacity: 0.9 }), TOKEN_COUNT);
+  tkMesh.frustumCulled = false; tkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(tkMesh);
 
   const rainPos = new Float32Array(RAIN_N * 6);
   const dropX = new Float32Array(RAIN_N), dropZ = new Float32Array(RAIN_N), dropY = new Float32Array(RAIN_N), dropV = new Float32Array(RAIN_N);
@@ -212,6 +243,40 @@ export function createExtras({ world, player, ui, audio, gfx }) {
     });
     pkBox.instanceMatrix.needsUpdate = true; pkBeam.instanceMatrix.needsUpdate = true;
   }
+
+  function updateTokens(dt) {
+    const focus = player.car || player;
+    const reach = player.car ? PICK_CAR : PICK_FOOT;
+    world.tokens.forEach((tok, i) => {
+      if (!tok.got && Math.hypot(tok.x - focus.x, tok.y - focus.y) < reach) {
+        tok.got = true;
+        ui.tkCount++;
+        ui.addMoney(TOKEN_REWARD);
+        ui.save();
+        audio.pickup();
+        ui.toast(ui.tkCount === TOKEN_COUNT ? 'SEMUA TOKEN TERKUMPUL!' : `Token ditemukan! +$${TOKEN_REWARD}`);
+      }
+      const bob = 10 + Math.sin(clock * 2.0 + i * 1.7) * 2.5, vis = tok.got ? 0 : 1;
+      dummy.position.set(toX(tok.x), bob, toZ(tok.y));
+      dummy.rotation.set(clock * 2.2 + i, clock * 1.4 + i, 0); dummy.scale.setScalar(vis);
+      dummy.updateMatrix(); tkMesh.setMatrixAt(i, dummy.matrix);
+    });
+    tkMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // Penggambaran counter token di HUD (kiri-atas), ditambahkan setelah drawPlaying agar tidak
+  // tertimpa; hanya muncul saat bermain.
+  function drawTokenHud(ctx) {
+    if (ui.state !== 'PLAYING') return;
+    ctx.save();
+    ctx.textAlign = 'left'; ctx.font = 'bold 15px sans-serif';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.fillStyle = '#e8b32a';
+    const t = 'TOKEN ' + ui.tkCount + '/' + ui.tkTotal;
+    ctx.strokeText(t, 30, 44); ctx.fillText(t, 30, 44);
+    ctx.restore();
+  }
+  const uiUpdate = ui.update.bind(ui);
+  ui.update = (dt, ctx) => { uiUpdate(dt, ctx); drawTokenHud(gfx.hud); };
 
   function updateGarage() {
     const car = player.car;
@@ -316,6 +381,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
   return {
     garage,
     handleKey(key, repeat) {
+      if (isFlyoverActive()) { skipFlyover(); return true; }
       if (!garage.open) return false;
       if (repeat) return true;
       if (choose[key]) choose[key]();
@@ -323,6 +389,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
       return true;
     },
     click(x, y) {
+      if (isFlyoverActive()) { skipFlyover(); return true; }
       if (!garage.open) return false;
       const R = GARAGE_ROWS;
       for (let i = 0; i < 3; i++) {
@@ -336,6 +403,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
       clock += dt;
       updateGarage();
       updatePackages(dt);
+      updateTokens(dt);
       updateWeather(dt);
     },
     weather: () => ({ rain, wet, flash, raining }),

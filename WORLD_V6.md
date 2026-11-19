@@ -61,6 +61,8 @@ No mission scripts, control bindings or world-generation code were changed.
 
 Drifting now slides the car sideways (handbrake or full-lock at speed) to build a drift score, emit short-lived rear-tire smoke, and pay a small cash bonus when the chain decays to grip (see `game/src/vehicle.js` and `game/src/combat.js`).
 
+A one-time cinematic flyover sweeps the camera over the city right after the title screen, skippable with any key (`game/src/camera.js`). Six hidden gold tokens are scattered across the three districts, paying cash on touch and reporting a `TOKEN n/6` counter in the HUD (`game/src/extras.js`).
+
 ## Verification
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.

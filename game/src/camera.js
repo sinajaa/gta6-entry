@@ -4,6 +4,37 @@ import { WORLD_W, WORLD_H, TILE, COLS, ROWS } from "./world.js";
 const WORLD_W_HALF = WORLD_W / 2, WORLD_H_HALF = WORLD_H / 2;
 const DRIVE_ZOOM = 0.75;
 
+// --- flyover sinematik setelah layar judul ---
+// Diputar sekali: kamera menyapu tinggi di atas kota lalu turun menuju posisi gameplay.
+// Bisa dilewati dengan tombol apa pun lewat skipFlyover (dipanggil dari extras.js).
+const FLYOVER_DUR = 8.0;
+let flyover = null; // { t, m }
+
+export function isFlyoverActive() { return flyover !== null; }
+export function skipFlyover() { if (flyover) flyover.t = FLYOVER_DUR; }
+
+function driveFlyover(cam3d, actor, dt) {
+  const f = flyover;
+  f.t += dt;
+  const x = Math.min(1, f.t / FLYOVER_DUR);
+  const e = 1 - Math.pow(1 - x, 3); // ease-out: melaju halus lalu melambat
+  const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
+  const yaw = e * Math.PI * 1.15; // menyapu ~207° mengelilingi pemain
+  const dist = 1250 - 810 * e; // dari jauh mendekat
+  const up = 700 - 440 * e; // dari tinggi menurun
+  cam3d.position.set(tx + Math.cos(yaw) * dist, up, tz + Math.sin(yaw) * dist);
+  const state = cam3d.userData;
+  state.look.set(tx, 24 + 46 * e, tz);
+  cam3d.lookAt(state.look);
+  if (x >= 1) {
+    const m = f.m;
+    flyover = null;
+    m.from.pos.copy(cam3d.position);
+    m.from.look.copy(state.look);
+    m.phase = 'blend'; m.t = 0; m.s = 0;
+  }
+}
+
 export function createCamera(viewW, viewH) {
   return { x: 0, y: 0, viewW, viewH, zoom: 1, visW: viewW, visH: viewH };
 }
@@ -53,6 +84,7 @@ function firstHit(lx, ly, lz, dx, dz, len, camY, offset) {
 const DOLLY_MAX = 90, SPEED_MAX = 320, EDGE_MARGIN = 200;
 
 export function updateCamera3D(cam3d, actor, mode, dt, world) {
+  if (flyover) { driveFlyover(cam3d, actor, dt); return; }
   const driving = mode === 'drive';
   const o = driving ? DRIVE : WALK;
   const dolly = driving ? DOLLY_MAX * Math.min(1, Math.abs(actor.speed) / SPEED_MAX) : 0;
@@ -140,9 +172,8 @@ export function updateMenuCamera(m, cam3d, dt) {
 
 export function beginMenuBlend(m, cam3d) {
   m.from.pos.copy(cam3d.position); m.from.look.copy(m.look);
-  cam3d.position.copy(m.game.pos); cam3d.userData.look.copy(m.game.look);
-  cam3d.fov = m.game.fov; cam3d.updateProjectionMatrix();
-  m.phase = 'blend'; m.t = 0; m.s = 0;
+  m.phase = 'flyover'; m.t = 0; m.s = 0;
+  flyover = { t: 0, m };
 }
 
 // dipanggil setelah updateCamera3D, sebelum render; blendCameraEnd memulihkan posisi kamera gameplay
