@@ -53,3 +53,7 @@ The game world is frozen while in any of these screens, so the orbit camera rend
 - `game/src/touch.js` — bigger stick/button hit areas with a visible dead-zone ring, a dedicated **REM** (handbrake) button, a persistent **LARI** (sprint) toggle, and haptic vibration on press (`navigator.vibrate`).
 - `game/index.html` — touch control markup/CSS for the dead-zone ring, enlarged buttons and the new handbrake button.
 - `README.md` — updated controls table.
+## HUD/menu polish (ui.js)
+
+- Photo mode: **F** cycles NORMAL / NOIR / WARM / COOL (HUD-canvas tint + vignette, so the filter is not baked into the saved PNG).
+- Minimap legend row (kamu / polisi / misi) under the minimap; pause menu has a STATISTIK block (drift best, collectibles, side jobs) — drift best and side jobs persist in the save.

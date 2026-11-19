@@ -107,9 +107,14 @@ export function createUI(hud) {
     navMenu: false, navIdx: 0, navScreen: 'main',
     logOpen: false, logIdx: 0,
     mapCanvas: null, world: null, missions: null, player: null,
-    photoHint: 0,
+    photoHint: 0, photoFilter: 0,
+    driftBest: saved && Number.isFinite(saved.driftBest) ? saved.driftBest : 0,
+    sideDone: saved && Number.isFinite(saved.sideDone) ? saved.sideDone : 0,
     toasts: [],
-    toast(text, secs = TOAST_SECONDS) { ui.toasts.push({ text, t: secs, max: secs }); if (ui.toasts.length > 5) ui.toasts.shift(); },
+    toast(text, secs = TOAST_SECONDS) {
+      const act = ui.missions && ui.missions.active;
+      if (act && act.def && act.def.kind === 'side' && /^MISI SELESAI/.test(text)) ui.sideDone++;
+      ui.toasts.push({ text, t: secs, max: secs }); if (ui.toasts.length > 5) ui.toasts.shift(); },
     addMoney(n) { ui.money += n; ui.toast((n >= 0 ? '+ $' : '- $') + Math.abs(n)); },
     saveSettings() {
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(ui.settings)); } catch (e) { /* storage tidak tersedia */ }
@@ -119,7 +124,7 @@ export function createUI(hud) {
     isPaused() { return ui.state === 'PAUSED' || ui.state === 'MAP' || ui.state === 'PHOTO'; },
     save() {
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ money: ui.money, missionsDone: ui.missionsDone, pkMask: ui.pkMask, standing: ui.standing, wanted: ui.wanted, savedAt: Date.now() }));
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ money: ui.money, missionsDone: ui.missionsDone, pkMask: ui.pkMask, standing: ui.standing, wanted: ui.wanted, driftBest: ui.driftBest, sideDone: ui.sideDone, savedAt: Date.now() }));
       } catch (e) { /* storage tidak tersedia */ }
     },
     openMap() { if (ui.state !== 'PLAYING') return; ui.state = 'MAP'; },
@@ -176,6 +181,7 @@ export function createUI(hud) {
       if (ui.state === 'PHOTO') {
         if (e.key === 'p' || e.key === 'Escape') { ui.closePhoto(); return 'photo-close'; }
         if (e.key === 'Enter') return 'photo-shot';
+        if (e.key.toLowerCase() === 'f') { ui.photoFilter = ((ui.photoFilter || 0) + 1) % PHOTO_FILTERS.length; return 'photo'; }
         return 'photo';
       }
       if (ui.state === 'PAUSED') {
@@ -233,6 +239,8 @@ export function createUI(hud) {
       for (const t of ui.toasts) t.t -= dt;
       if (ui.stationT > 0) ui.stationT -= dt;
       if (ui.photoHint > 0) ui.photoHint -= dt;
+      const dc = ui.player && ui.player.car;
+      if (dc && dc.driftTotal > ui.driftBest) ui.driftBest = dc.driftTotal;
       ui.toasts = ui.toasts.filter((t) => t.t > 0);
       ctx = ctx || (hud && hud.getContext && hud.getContext('2d'));
       if (!ctx) return;
@@ -282,6 +290,7 @@ function drawPlaying(ctx, ui) {
   ctx.restore();
   drawWeapon(ctx, ui);
   drawHitmarker(ctx, ui);
+  drawMinimapLegend(ctx);
   drawStanding(ctx, ui);
   drawGarage(ctx, ui);
 }
@@ -419,12 +428,60 @@ function drawDead(ctx, ui) {
   drawWeapon(ctx, ui);
 }
 
+const PHOTO_FILTERS = [
+  { name: 'NORMAL', tint: null },
+  { name: 'NOIR', tint: 'rgba(24,26,36,0.42)', vignette: 0.6 },
+  { name: 'WARM', tint: 'rgba(255,150,60,0.2)', vignette: 0.2 },
+  { name: 'COOL', tint: 'rgba(70,130,255,0.2)', vignette: 0.2 },
+];
+
 function drawPhotoHint(ctx, ui) {
   ctx.save();
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(W / 2 - 220, 12, 440, 30);
-  ctx.textAlign = 'center'; ctx.font = 'bold 15px sans-serif'; ctx.fillStyle = '#fff';
-  ctx.fillText('MODE FOTO — Panah: orbit · Enter: simpan · P/ESC: keluar', W / 2, 32);
+  const f = PHOTO_FILTERS[ui.photoFilter || 0];
+  if (f.tint) { ctx.fillStyle = f.tint; ctx.fillRect(0, 0, W, H); }
+  if (f.vignette) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.6);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + f.vignette + ')');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(W / 2 - 300, 12, 600, 30);
+  ctx.textAlign = 'center'; ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#fff';
+  ctx.fillText('MODE FOTO — Panah: orbit · F: filter [' + f.name + '] · Enter: simpan · P/ESC: keluar', W / 2, 32);
+  ctx.restore();
+}
+
+function drawMinimapLegend(ctx) {
+  const items = [['#fff', 'kamu'], ['#ff2a2a', 'polisi'], ['#ffd21f', 'misi']];
+  ctx.save();
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  let x = 150;
+  const y = H - 16;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x - 6, y - 12, 150, 18);
+  for (const [c, label] of items) {
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x + 4, y - 3, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ddd'; ctx.fillText(label, x + 12, y);
+    x += 12 + ctx.measureText(label).width + 12;
+  }
+  ctx.restore();
+}
+
+function drawPauseStats(ctx, ui) {
+  const x = W / 2 + 210, y = 212, w = 230;
+  const rows = [
+    ['Drift terbaik', Math.round(ui.driftBest || 0)],
+    ['Koleksi', ui.pkCount + '/' + ui.pkTotal],
+    ['Side job', ui.sideDone || 0],
+  ];
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,8,14,0.6)'; ctx.fillRect(x, y, w, 24 + rows.length * 26 + 8);
+  ctx.textAlign = 'left'; ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ffb347';
+  ctx.fillText('STATISTIK', x + 12, y + 20);
+  rows.forEach(([label, val], i) => {
+    const ry = y + 46 + i * 26;
+    ctx.font = '14px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#bbb'; ctx.fillText(label, x + 12, ry);
+    ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.fillText(String(val), x + w - 12, ry);
+  });
   ctx.restore();
 }
 
@@ -590,6 +647,7 @@ function drawPauseMenu(ctx, ui) {
   const sc = ui.saveCounters || {};
   ctx.fillStyle = '#7bd66b'; ctx.font = 'bold 14px sans-serif';
   ctx.fillText('SAVE: $' + ui.money + ', ' + (ui.missionsDone || 0) + ' misi, ' + (sc.carsStolen || 0) + ' mobil', W / 2, startY + items.length * step + 40);
+  drawPauseStats(ctx, ui);
 }
 
 function drawSettingsMenu(ctx, ui) {
