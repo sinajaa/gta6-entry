@@ -1,6 +1,6 @@
 # MISSIONS_V6 — side jobs and checkpoint respawn
 
-This checkpoint adds two player-started **side jobs** launched from the mission log, plus a **checkpoint respawn** system so a failed mission retries from its last objective instead of from the very beginning. The eight chained story missions and the controls are unchanged.
+This checkpoint adds four player-started **side jobs** launched from the mission log, plus a **checkpoint respawn** system so a failed mission retries from its last objective instead of from the very beginning. The eight chained story missions and the controls are unchanged.
 
 ## Design constraints honored
 
@@ -10,7 +10,7 @@ This checkpoint adds two player-started **side jobs** launched from the mission 
 
 ## What was added
 
-### Two side jobs (started from the mission log)
+### Four side jobs (started from the mission log)
 
 **1. `heist` — PERAMPOKAN BANK (2 GELOMBANG)**
 
@@ -27,6 +27,26 @@ A three-stage job with a two-wave police siege and a car escape:
 - **Stage 1 (drop off):** a destination marker spawns `350–700` units away; reaching it calls `finish()`.
 - Timed: the `limit` of `90s` is enforced by the shared mission timer. Reward `$400`.
 
+**3. `stunt` — LOMPATAN STUNT (3 RAMP)**
+
+A timed side job scored on three marked ramps by **air time** and **landing**:
+
+- **Three ramps** are spawned along the city's lane points (each `160–340` units from the last), shown as yellow markers; the next ramp in sequence is the active target.
+- The player must be in a car (`playerCar` detects a `speed`/`angle` focus) and hit the ramp mark within `34` units while travelling faster than `140` units/sec; slower approach toasts "LAJU TERLALU PELAN".
+- Crossing the ramp at speed begins an "airborne" window: `a.air` accumulates `dt` per frame until landing is detected (car slows below `90` or travels `260+` units past the ramp).
+- On landing, the jump is scored: **air time** → up to `100` points (`air * 80`, capped), plus **landing** → `+40` if the car is still rolling cleanly (speed `>40` and `<260`, still on car wheels). The per-ramp total is added to `a.score`.
+- After the third ramp the job calls `finish()`. Reward `$900`, `limit` `120s`.
+- Checkpoint respawn preserves `a.score` and the remaining `a.ramps` (via `score`/`ramps` fields in `m.checkpoint`).
+
+**4. `bounty` — BURUAN HIDUP**
+
+A timed car-chase where the target flees fast and must be stopped before the timer expires:
+
+- A `mark` car spawns `260–380` units ahead with `hp = 150` and runs at a constant `240` units/sec via `driveLane`, following the lane grid and bouncing at world edges.
+- **Stop the target** by tailing within `30` units (accumulates `a.hold` and drains `40 hp/s`) or **ramming** at speed (`>150` units/sec drains `80 hp/s`). Staying close `2.5s` or reducing `hp` to `0` calls `finish()`.
+- The shared mission `limit` of `90s` is the expiry: if the target is not stopped in time, the job `fail()`s.
+- Reward `$1000`; the target car is cleaned up on finish/fail like the story `chase`/`execute` cars.
+
 ### Checkpoint respawn
 
 - On `fail()`, if the active mission has advanced past `stage 0`, the current objective state is captured into `m.checkpoint` — `stage`, and per-mission objective fields (`dest`, `pickup`, `points`, and heist wave timers `wave` / `waveT` / `waveDuration`).
@@ -41,6 +61,6 @@ A three-stage job with a two-wave police siege and a car escape:
 
 ## Files changed
 
-- `game/src/missions.js` — two new `MISSION_LIST` entries, `heist` and `taxi` handlers, their `init` branches, `startSide`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
+- `game/src/missions.js` — four new `MISSION_LIST` entries, the `heist`, `taxi`, `stunt`, and `bounty` handlers, their `init` branches, `startSide`, `playerCar`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
 - `game/src/ui.js` — `logIdx`, `logSelect`, `logStartSelected`, `logClick`, log-open key handling, and the rewrite of `drawMissionLog` to select/start side jobs.
 - `game/src/main.js` — pointer-down routing to `ui.logClick` when the log is open.

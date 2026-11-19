@@ -51,10 +51,22 @@ export const MISSION_LIST = [
     intro: 'Jemput penumpang di titik kuning, antar ke tujuan sebelum waktu habis.',
     win: 'Penumpang puas. Ongkos dihitung.', lose: 'Penumpang kesal dan turun.',
   },
+  {
+    id: 'stunt', kind: 'side', title: 'LOMPATAN STUNT (3 RAMP)', who: 'Racer Red', reward: 900, limit: 120,
+    intro: 'Tiga ramp ditandai. Laju kencang, lompat, dan mendarat mulus untuk skor maksimal!',
+    win: 'Stunt hebat! Penonton takjub.', lose: 'Stunt gagal... lompatanmu cuma angin.',
+  },
+  {
+    id: 'bounty', kind: 'side', title: 'BURUAN HIDUP', who: 'Bounty Board', reward: 1000, limit: 90,
+    intro: 'Target kabur pakai mobil cepat. Hentikan dia sebelum waktu habis!',
+    win: 'Target tertangkap. Hadiah cair.', lose: 'Target hilang di kejauhan...',
+  },
 ];
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+// f bisa mobil (punya speed & angle) atau pejalan kaki (punya vx/vy).
+const playerCar = (f) => (f && f.speed !== undefined && f.angle !== undefined ? f : null);
 
 function ptsBetween(world, from, min, max) {
   let pts = world.lanePoints.filter((p) => { const d = dist(p, from); return d >= min && d <= max; });
@@ -127,6 +139,8 @@ export function createMissions(world, ui, audio) {
         if (cp.dest) m.active.dest = cp.dest;
         if (cp.pickup) m.active.pickup = cp.pickup;
         if (cp.points) m.active.points = cp.points;
+        if (cp.score != null) m.active.score = cp.score;
+        if (cp.ramps) m.active.ramps = cp.ramps;
         m.active.cp = cp;
         delete m.checkpoint;
       }
@@ -323,6 +337,69 @@ export function createMissions(world, ui, audio) {
       markers: (a) => [{ x: a.stage ? a.dest.x : a.pickup.x, y: a.stage ? a.dest.y : a.pickup.y, scale: 1 }],
       target: (a) => (a.stage ? a.dest : a.pickup),
     },
+
+    // LOMPATAN STUNT: 3 ramp ditandai, dinilai air time (waktu melayang) dan mendarat mulus.
+    stunt: {
+      update(a, f, dt) {
+        const car = playerCar(f);
+        const speed = car ? Math.abs(car.speed) : 0;
+        if (!a.ramps) return; // tidak terjadi di luar init
+        const ramp = a.ramps[a.stage];
+
+        // Fase melayang: setelah lepas landas dari ramp, hitung air time sampai mendarat.
+        if (a.airborne) {
+          a.air += dt;
+          // Mendarat = kondisi sudah melewati puncak & kecepatan normal kembali / melewati ramp.
+          if (a.air >= 0.25 && (speed < 90 || dist(f, ramp) > 260)) {
+            a.airborne = false;
+            const airScore = Math.min(100, a.air * 80);           // air time → skor 0..100
+            const landed = speed > 40 && speed < 260 && car ? 1 : 0; // mendarat mulus (tidak terhenti / kebalik)
+            const landingScore = landed ? 40 : 0;
+            const jumpScore = Math.round(airScore + landingScore);
+            a.score += jumpScore;
+            ui.toast('RAMP ' + (a.stage + 1) + '/3 — AIR ' + a.air.toFixed(1) + 's — SKOR +' + jumpScore);
+            say(a.def.who, a.stage + 1 >= a.ramps.length ? 'Tuntas tiga ramp! Maestro.' : 'Bagus, lanjut ramp berikutnya!');
+            a.stage++;
+            a.air = 0;
+            if (a.stage >= a.ramps.length) finish();
+            else say(a.def.who, 'Ramp berikutnya ditandai. Gas lagi!');
+          }
+          return;
+        }
+
+        // Belum melayang: dekati & lewati ramp dengan kecepatan cukup.
+        if (dist(f, ramp) >= 34) return;
+        if (speed < 140) { ui.toast('LAJU TERLALU PELAN — BUTUH ' + Math.round(140 - speed) + ' KM/JAM LAGI', 1.2); return; }
+        a.airborne = true; a.air = 0;
+      },
+      text: (a) => {
+        if (a.airborne) return `MELAYANG ${a.air.toFixed(1)}s — SKOR ${a.score}`;
+        return `RAMP ${a.stage + 1}/3 ${Math.round(dist(m.focus, a.ramps[a.stage]))}m — SKOR ${a.score}`;
+      },
+      markers: (a) => a.ramps.slice(a.stage, a.stage + 1).map((p, i) => ({ x: p.x, y: p.y, scale: 1 })),
+      target: (a) => a.ramps[a.stage],
+    },
+
+    // BURUAN HIDUP: target kabur pakai mobil cepat, hentikan (tempel & rusak) sebelum timer habis.
+    bounty: {
+      update(a, f, dt) {
+        if (!a.car) return;
+        driveLane(world, a.car, 240, dt);
+
+        // Hentikan: sentuh & tahan cukup lama sambil mobilnya rusak.
+        if (dist(f, a.car) < 30) { a.hold += dt; a.car.hp = Math.max(0, (a.car.hp ?? 150) - 40 * dt); }
+        else a.hold = Math.max(0, a.hold - dt * 2);
+
+        // Ramming: pemain menabrak target saat kencang → kerusakan besar.
+        const car = playerCar(f);
+        if (car && dist(f, a.car) < 34 && Math.abs(car.speed) > 150) a.car.hp = Math.max(0, (a.car.hp ?? 150) - 80 * dt);
+
+        if ((a.car.hp ?? 150) <= 0 || a.hold >= 2.5) finish();
+      },
+      text: (a) => `HENTIKAN TARGET ${Math.round(dist(m.focus, a.car))}m (${Math.max(0, Math.round(a.car.hp))}% HP)`,
+      markers: (a) => [{ x: a.car.x, y: a.car.y, scale: 0.6 }],
+      target: (a) => a.car,
+    },
   };
 
   function init(a, f, w) {
@@ -363,6 +440,19 @@ export function createMissions(world, ui, audio) {
     else if (a.id === 'finale') a.dest = spot(w, f, 250, 450);
     else if (a.id === 'heist') a.dest = spot(w, f, 250, 450);
     else if (a.id === 'taxi') a.pickup = spot(w, f, 300, 550);
+    else if (a.id === 'stunt') {
+      a.stage = 0; a.score = 0; a.air = 0; a.airborne = false;
+      a.ramps = [];
+      let from = f;
+      for (let i = 0; i < 3; i++) {
+        const p = spot(w, from, 160, 340); a.ramps.push(p); from = p;
+      }
+    } else if (a.id === 'bounty') {
+      const p = pick(ptsBetween(w, f, 260, 380));
+      const dir = (p.horizontal ? p.x - f.x : p.y - f.y) >= 0 ? 1 : -1;
+      a.car = laneCar(w, p, dir, 'mark', '#ff6b1a', 240);
+      a.car.hp = 150; a.hold = 0; a.cars.push(a.car);
+    }
   }
 
   function cleanup() {
@@ -404,6 +494,8 @@ export function createMissions(world, ui, audio) {
         dest: a.dest ? { x: a.dest.x, y: a.dest.y } : null,
         pickup: a.pickup ? { x: a.pickup.x, y: a.pickup.y } : null,
         points: a.points ? a.points.map((p) => ({ x: p.x, y: p.y })) : null,
+        score: a.score,
+        ramps: a.ramps ? a.ramps.map((p) => ({ x: p.x, y: p.y })) : null,
       };
     } else {
       m.checkpoint = null;
