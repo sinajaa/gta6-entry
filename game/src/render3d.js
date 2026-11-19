@@ -1,7 +1,7 @@
 // render3d.js — render kota 3D dengan three.js dan HUD overlay
 // Kota 3D digambar oleh renderer yang disusun sendiri di atas three.js.
 import * as THREE from '../vendor/three.module.min.js';
-import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
+import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H, districtOfBlock } from './world.js';
 import { nearestEnterable } from './vehicle.js';
 
 const GROUND_COLORS = { [T.ROAD]: '#565b60', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
@@ -1000,6 +1000,7 @@ export function buildWorldMeshes(gfx, world) {
   buildProps(gfx, world);
   buildMissionMarkers(gfx);
   buildWaterfront(gfx);
+  buildLandmarks(gfx, world);
 }
 
 // ------------------------------------------------------------- waterfront
@@ -1254,6 +1255,190 @@ function buildWaterfront(gfx) {
   boatMesh.frustumCulled = false;
   gfx.scene.add(boatMesh);
   gfx.marinaBoats = boatMesh;
+}
+
+// ------------------------------------------------------------- landmarks
+// A tall landmark tower with a lit crown (visible from anywhere on the island),
+// richer downtown rooftop props (water tanks, AC condensers and antennas), and a
+// flickering neon sign strip along one downtown street. Everything is merged or
+// instanced so the seam costs only a handful of draw calls; it never touches tiles,
+// lane points or gameplay, and it lives in the north-west part of downtown so the
+// four ?shot= scenes keep their frames.
+const TOWER_H = 620;
+const CROWN_N = 12;
+const CROWN_COLOR = '#ff2d95';
+const NEON_STRIP_COLORS = ['#ff2d95', '#18e0ff', '#7dff6a', '#ffd23a', '#ff3ea5', '#9b5cff'];
+const lmC = new THREE.Color();
+
+function neonFlicker(t, phase) {
+  const wave = Math.sin(t * 2.1 + phase) * 0.5 + 0.5;
+  const buzz = Math.sin(t * 17.0 + phase * 5.3);
+  const drip = buzz > 0.8 ? (buzz - 0.8) * 4.0 : 0.0;
+  return Math.max(0, 0.72 + 0.28 * wave) * (1.0 + 0.25 * drip);
+}
+
+function buildTowerGeometry() {
+  return mergeColored([
+    { geo: new THREE.CylinderGeometry(12, 22, TOWER_H, 12).translate(0, TOWER_H / 2, 0), color: '#cfc9ba' },
+    { geo: new THREE.CylinderGeometry(20, 20, 10, 12).translate(0, TOWER_H - 48, 0), color: '#b8b2a2' },
+    { geo: new THREE.CylinderGeometry(17, 17, 12, 12).translate(0, TOWER_H - 12, 0), color: '#a9a396' },
+    { geo: new THREE.CylinderGeometry(2.5, 5, 90, 8).translate(0, TOWER_H + 45, 0), color: '#9b958a' },
+    { geo: new THREE.BoxGeometry(70, 10, 70).translate(0, 5, 0), color: '#8f8a80' },
+    { geo: new THREE.BoxGeometry(3, 3, 3).translate(0, TOWER_H + 90, 0), color: '#ff3b30' },
+  ]);
+}
+
+function buildWaterTankGeometry() {
+  return mergeColored([
+    { geo: new THREE.CylinderGeometry(7, 7, 14, 12).translate(0, 20, 0), color: '#9a6b46' },
+    { geo: new THREE.CylinderGeometry(7.5, 7.5, 1.5, 12).translate(0, 27, 0), color: '#7d5438' },
+    { geo: new THREE.ConeGeometry(8, 5, 12).translate(0, 30, 0), color: '#6e4830' },
+    { geo: new THREE.CylinderGeometry(1, 1, 10, 6).translate(-5, 5, -5), color: '#3a2f27' },
+    { geo: new THREE.CylinderGeometry(1, 1, 10, 6).translate(5, 5, -5), color: '#3a2f27' },
+    { geo: new THREE.CylinderGeometry(1, 1, 10, 6).translate(-5, 5, 5), color: '#3a2f27' },
+    { geo: new THREE.CylinderGeometry(1, 1, 10, 6).translate(5, 5, 5), color: '#3a2f27' },
+  ]);
+}
+
+function buildAcGeometry() {
+  return mergeColored([
+    { geo: new THREE.BoxGeometry(11, 6, 8).translate(0, 3, 0), color: '#b8bec4' },
+    { geo: new THREE.BoxGeometry(10, 5, 0.6).translate(0, 3, 4.1), color: '#7d858c' },
+  ]);
+}
+
+function buildAntennaGeometry() {
+  return mergeColored([
+    { geo: new THREE.CylinderGeometry(0.8, 1.1, 46, 6).translate(0, 23, 0), color: '#2d3136' },
+    { geo: new THREE.BoxGeometry(20, 0.5, 0.5).translate(0, 34, 0), color: '#2d3136' },
+    { geo: new THREE.BoxGeometry(0.5, 0.5, 20).translate(0, 26, 0), color: '#2d3136' },
+    { geo: new THREE.BoxGeometry(2, 2, 2).translate(0, 46, 0), color: '#ff3b30' },
+  ]);
+}
+
+function buildLandmarks(gfx, world) {
+  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3();
+
+  // Landmark tower in the park nearest the north-centre, so it rises above the skyline
+  // and stays visible from anywhere on the island.
+  const north = { x: WORLD_W / 2, y: WORLD_H * 0.3 };
+  let park = null, best = Infinity;
+  for (const p of world.parks) {
+    const d = Math.hypot(p.x + p.w / 2 - north.x, p.y + p.h / 2 - north.y);
+    if (d < best) { best = d; park = p; }
+  }
+  const tx = (park ? park.x + park.w / 2 : WORLD_W / 2) - WORLD_W / 2;
+  const tz = (park ? park.y + park.h / 2 : WORLD_H * 0.3) - WORLD_H / 2;
+  const tower = new THREE.Mesh(buildTowerGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  tower.position.set(tx, 0, tz);
+  tower.castShadow = true;
+  tower.frustumCulled = false;
+  gfx.scene.add(tower);
+  gfx.landmarkTower = tower;
+
+  // Lit crown: a ring of emissive blocks around the deck, glowing at night.
+  const crown = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(5, 6, 5),
+    new THREE.MeshBasicMaterial({ toneMapped: false, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }),
+    CROWN_N,
+  );
+  for (let i = 0; i < CROWN_N; i++) {
+    const a = (i / CROWN_N) * Math.PI * 2;
+    q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a);
+    m4.compose(new THREE.Vector3(tx + Math.cos(a) * 18, TOWER_H - 8, tz + Math.sin(a) * 18), q4, s3.set(1, 1, 1));
+    crown.setMatrixAt(i, m4);
+  }
+  crown.instanceMatrix.needsUpdate = true;
+  crown.setColorAt(0, lmC.set(CROWN_COLOR));
+  crown.instanceColor.needsUpdate = true;
+  crown.frustumCulled = false;
+  gfx.scene.add(crown);
+
+  // Rooftop detail on downtown buildings: one water tank and a cluster of AC condensers
+  // each, plus antennas on the taller towers, all as one InstancedMesh per prop kind.
+  const rand = makeRand(711);
+  const tanks = [], acs = [], ants = [];
+  for (const b of world.buildings) {
+    if (districtOfBlock(Math.floor(b.x / (10 * TILE)), Math.floor(b.y / (10 * TILE))) !== 0) continue;
+    if (b.w < 48 || b.h < 48) continue;
+    const cx = b.x + b.w / 2 - WORLD_W / 2, cz = b.y + b.h / 2 - WORLD_H / 2;
+    const hx = b.w / 2 - 12, hz = b.h / 2 - 12;
+    const spot = () => [cx + (rand() - 0.5) * 2 * hx, cz + (rand() - 0.5) * 2 * hz];
+    let p = spot();
+    tanks.push({ x: p[0], y: b.height, z: p[1], s: 0.85 + rand() * 0.5, r: rand() * Math.PI * 2 });
+    const nAc = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < nAc; k++) { p = spot(); acs.push({ x: p[0], y: b.height + 2, z: p[1], s: 0.9 + rand() * 0.4, r: rand() * Math.PI * 2 }); }
+    if (b.height >= 96) {
+      const nA = 1 + Math.floor(rand() * 2);
+      for (let k = 0; k < nA; k++) { p = spot(); ants.push({ x: p[0], y: b.height, z: p[1], s: 0.8 + rand() * 0.6 }); }
+    }
+  }
+  const inst = (geo, data) => {
+    if (!data.length) return;
+    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), data.length);
+    data.forEach((d, i) => {
+      q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.r);
+      m4.compose(new THREE.Vector3(d.x, d.y, d.z), q4, s3.set(d.s, d.s, d.s));
+      mesh.setMatrixAt(i, m4);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    gfx.scene.add(mesh);
+  };
+  inst(buildWaterTankGeometry(), tanks);
+  inst(buildAcGeometry(), acs);
+  inst(buildAntennaGeometry(), ants);
+
+  // Neon sign strip along a downtown street: a dark mounting board behind a run of
+  // glowing segments, each flickering independently once night falls.
+  const roadX = 30 * TILE, z0 = 640, z1 = 1120;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2, 10, z1 - z0), new THREE.MeshLambertMaterial({ color: 0x16181c }));
+  back.position.set(roadX - TILE / 2 - WORLD_W / 2, 30, (z0 + z1) / 2 - WORLD_H / 2);
+  gfx.scene.add(back);
+
+  const segCount = Math.floor((z1 - z0) / 40);
+  const neon = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(3, 7, 34),
+    new THREE.MeshBasicMaterial({ toneMapped: false, fog: false, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
+    segCount,
+  );
+  const neonPhases = [];
+  const nx = roadX - TILE / 2 - WORLD_W / 2;
+  for (let i = 0; i < segCount; i++) {
+    q4.identity();
+    m4.compose(new THREE.Vector3(nx, 30, z0 + 20 + i * 40 - WORLD_H / 2), q4, s3.set(1, 1, 1));
+    neon.setMatrixAt(i, m4);
+    neonPhases.push(i * 1.31 + 0.7);
+  }
+  neon.instanceMatrix.needsUpdate = true;
+  neon.setColorAt(0, lmC.set(NEON_STRIP_COLORS[0]));
+  neon.instanceColor.needsUpdate = true;
+  neon.frustumCulled = false;
+  gfx.scene.add(neon);
+
+  gfx.landmarks = { crown, neon, neonPhases };
+}
+
+function syncLandmarks(gfx) {
+  const L = gfx.landmarks;
+  if (!L) return;
+  const t = performance.now() / 1000;
+  const night = gfx.night || 0;
+  if (L.crown) {
+    for (let i = 0; i < CROWN_N; i++) {
+      const pulse = 0.7 + 0.3 * Math.sin(t * 2.4 + i * 0.9);
+      L.crown.setColorAt(i, lmC.set(CROWN_COLOR).multiplyScalar(night * pulse));
+    }
+    L.crown.instanceColor.needsUpdate = true;
+  }
+  if (L.neon) {
+    const k = Math.min(1, night * 1.4);
+    for (let i = 0; i < L.neon.count; i++) {
+      L.neon.setColorAt(i, lmC.set(NEON_STRIP_COLORS[i % NEON_STRIP_COLORS.length]).multiplyScalar(k * neonFlicker(t, L.neonPhases[i])));
+    }
+    L.neon.instanceColor.needsUpdate = true;
+  }
 }
 
 function syncOcean(gfx) {
@@ -2078,6 +2263,7 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   if (gfx.moon) gfx.moon.target.position.set(tx, 0, tz);
   updateDayNight(gfx);
   syncOcean(gfx);
+  syncLandmarks(gfx);
   gfx.sun.position.set(tx, 0, tz).add(gfx.sunDirOverride || SUN_DIR);
   if (gfx.moon) gfx.moon.position.set(tx, 0, tz).add(MOON_DIR);
   fitActiveShadow(gfx);
