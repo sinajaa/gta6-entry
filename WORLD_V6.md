@@ -37,11 +37,23 @@ This checkpoint frames the procedural city as an island and adds a living waterf
 - A floating dock (twin pontoons plus wooden deck planks and three finger slips) sits beside the pier at the waterline.
 - Six instanced boats (hull, gunwale, cabin and roof in a single merged geometry) are moored alongside, each tinted a different color.
 
+## Enterable interiors
+
+A new fourth enterable interior joins the existing three (restaurant, gun shop, bank) behind the
+same registry in `game/src/interiors.js`:
+
+- **Diner** — a small counter-service diner reachable like the others (`E` at its door, walk in with
+  WASD, `E` at a counter seat to buy a meal and refill HP). A long front counter with a top rail and
+  a gold register, a row of counter stools, and two side tables with stools fill the room. It reuses
+  the identical door/exit/spot logic as the other interiors, so it costs no new systems — just one
+  more `kind` entry plus a `furnish` branch.
+
 ## Files changed
 
 | File | Change |
 |---|---|
 | `game/src/render3d.js` | `buildWaterfront` seam (ocean/beach/palms/umbrellas/pier/marina), `buildPalmGeometry`, `buildBoatGeometry`, `flatQuad`, ocean shaders, and `syncOcean` wired into `renderFrame` |
+| `game/src/interiors.js` | fourth enterable interior (diner with counter and stools) added to the existing `KINDS` registry and `furnish` branch |
 
 No mission scripts, control bindings or world-generation code were changed.
 

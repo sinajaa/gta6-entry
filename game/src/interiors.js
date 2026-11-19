@@ -9,6 +9,7 @@ const KINDS = [
   { name: 'RESTORAN', color: 0xff9a3c, floor: 0x8a5a3a, wall: 0xd9b48a },
   { name: 'TOKO SENJATA', color: 0xff4a4a, floor: 0x4a4f57, wall: 0x7d8590 },
   { name: 'BANK', color: 0x4aa8ff, floor: 0xb9b3a4, wall: 0xdcd6c6 },
+  { name: 'DINER', color: 0xff6b8a, floor: 0x4a3b32, wall: 0xe8c9a8 },
 ];
 const SIDES = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 const USE_RANGE = 34, VAULT_CASH = 2500, AMMO_PRICE = 200, MEAL_PRICE = 50, HEIST_HEAT = 390;
@@ -16,6 +17,7 @@ const SPOTS = [
   [[-70, -40], [0, -40], [70, -40], [-70, 20], [70, 20]].map(([x, z]) => ({ x, z, id: 'meal', label: 'E: makan (pulihkan HP) $' + MEAL_PRICE })),
   [{ x: 0, z: -14, id: 'ammo', label: 'E: beli ammo $' + AMMO_PRICE }],
   [{ x: 0, z: -50, id: 'vault', label: 'E: buka vault' }],
+  [[-70, -40], [0, -40], [70, -40], [-70, 20], [70, 20]].map(([x, z]) => ({ x, z, id: 'meal', label: 'E: makan (pulihkan HP) $' + MEAL_PRICE })),
 ];
 
 function pickDoors(world, player) {
@@ -90,6 +92,20 @@ function furnish(g, i) {
     box(g, 54, 40, 24, 0, 20, -HALF_D + 14, 0x8c929a);
     g.userData.vaultDoor = box(g, 30, 30, 3, 0, 20, -HALF_D + 26, 0xc9a227);
     for (const x of [-80, 80]) box(g, 14, 14, 14, x, 7, 30, 0x2f6b4a);
+  }
+  if (i === 3) {
+    // Diner: meja counter panjang dengan bangku tunggu di depan, plus beberapa meja samping.
+    box(g, 260, 22, 12, 0, 11, -20, 0xc96a3a);          // counter utama
+    box(g, 260, 3, 2, 0, 23, -20, 0x5a3a22);            // lis atas counter
+    for (const x of [-110, -80, -50, -20, 10, 40, 70]) {
+      box(g, 8, 16, 10, x, 8, 0, 0x8a4a2a);              // bangku tunggu
+      box(g, 12, 3, 12, x, 18, 0, 0xb03a2e);             // dudukan bangku
+    }
+    for (const [x, z] of [[-80, 40], [80, 40]]) {        // meja samping
+      box(g, 30, 3, 30, x, 15, z, 0xf2e6d0);
+      box(g, 6, 15, 6, x, 7, z, 0x5a3a22);
+    }
+    box(g, 40, 6, 6, -HALF_W + 24, 16, -HALF_D + 10, 0xc9a227); // mesin kasir emas kecil
   }
 }
 

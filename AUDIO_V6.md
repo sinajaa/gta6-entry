@@ -68,11 +68,27 @@ the delay-to-flash relationship stays intact.
 `NEON WAVE 101.3`, `FUNKY TOWN 94.7` and `LOFI BAY 88.1` are untouched — same sequencers, same
 `setRadio`/`nextStation`/`stationName` interface, same in-car toggle and `R` to switch.
 
+## Low-fuel warning beep
+
+The player car's nitro reserve (`car.nitroFuel`, 0–1) is the on-board fuel gauge. A low level
+(under `FUEL_LOW = 0.15`) triggers a doubled square-wave beep — two short blips (880 / 920 Hz) in
+quick succession, then a ~0.9 s pause before it repeats — so a nearly drained tank pings clearly
+but stays unobtrusive. The beep pattern stops the moment the reserve rises back above the
+threshold. `update(...)` reads `car.nitroFuel` each frame and a `setFuel(0..1)` hook mirrors it.
+
+## Distant siren ambient loop
+
+A second, faint siren voice — two detuned sine tones (440 / 660 Hz) alternating on a slower 900 ms
+cadence, on its own gain bus — sits under the mix as a background wail. Its gain crossfades in
+with `ctx.heat` (reaching full at heat 4) over ~0.8 s via `setTargetAtTime`, so a high chase makes
+a distant squad-car cry drift up through the city bed without ever stomping on the primary
+`setSiren` proximity siren.
+
 ## Files changed
 
 | File | Change |
 | --- | --- |
-| `game/src/audio.js` | full rewrite: adaptive music director, engine/tyre, per-gun shot + reverb, ambient bed, gull calls, and new `setHeat`/`setDistrict`/`setEngine`/`setWater`/`update` hooks |
+| `game/src/audio.js` | full rewrite: adaptive music director, engine/tyre, per-gun shot + reverb, ambient bed, gull calls, low-fuel beep, distant siren loop, and `setHeat`/`setDistrict`/`setEngine`/`setWater`/`setFuel`/`update` hooks |
 | `game/src/combat.js` | accepts `audio` and calls `audio.shot(c.weapon)` / `audio.shot('cop')` |
 | `game/src/main.js` | passes `audio` to `createCombat`, imports `districtAt`, and calls `audio.update({car, heat, district, water})` each frame |
 

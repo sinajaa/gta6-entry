@@ -6,9 +6,12 @@
 export function createAudio() {
   let ac = null, master = null, muted = false, failed = false;
   let sirenGain = null, sirenOsc = [], sirenTimer = 0, sirenIntensity = 0, sirenHigh = false;
+  let sirenAmb = null, sirenAmbGain = null, sirenAmbOsc = [], sirenAmbHigh = false, sirenAmbTimer = 0;
+  let fuelWarn = { timer: 0, next: 0, beeps: 0 };
+  const FUEL_LOW = 0.15;
 
   // State adaptif dibaca oleh music director tiap tick.
-  const ctx = { heat: 0, district: 0, speed: 0, water: 0, time: 0 };
+  const ctx = { heat: 0, district: 0, speed: 0, water: 0, time: 0, fuel: 1 };
 
   const safe = (fn) => (...args) => {
     if (!ac) return;
@@ -49,6 +52,26 @@ export function createAudio() {
         sirenOsc[1].g.gain.value = sirenHigh ? 1 : 0;
       } catch (e) { /* abaikan */ }
     }, 500);
+  }
+
+  // Sirene jauh: dengung dua-nada yang redup di latar, masuk pelan saat heat tinggi.
+  function startSirenAmbient() {
+    sirenAmbGain = ac.createGain(); sirenAmbGain.gain.value = 0; sirenAmbGain.connect(master);
+    sirenAmbOsc = [440, 660].map((f) => {
+      const o = ac.createOscillator();
+      o.type = 'sine'; o.frequency.value = f;
+      const g = ac.createGain(); g.gain.value = 0;
+      o.connect(g); g.connect(sirenAmbGain); o.start();
+      return { o, g };
+    });
+    sirenAmbOsc[0].g.gain.value = 1;
+    sirenAmbTimer = setInterval(() => {
+      try {
+        sirenAmbHigh = !sirenAmbHigh;
+        sirenAmbOsc[0].g.gain.value = sirenAmbHigh ? 0 : 1;
+        sirenAmbOsc[1].g.gain.value = sirenAmbHigh ? 1 : 0;
+      } catch (e) { /* abaikan */ }
+    }, 900);
   }
 
   const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -301,6 +324,33 @@ export function createAudio() {
     }
   }
 
+  // Peringatan bahan bakar: bip ganda pendek ketika nitro (bahan bakar) hampir habis,
+  // berulang selagi level rendah.
+  function fuelBeep(f) {
+    const t = ac.currentTime;
+    const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = f;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.1);
+  }
+  function tickFuelWarn() {
+    if (ctx.fuel > FUEL_LOW) { fuelWarn.beeps = 0; return; }
+    if (fuelWarn.timer && ac.currentTime < fuelWarn.next) return;
+    fuelBeep(880 + fuelWarn.beeps * 40);
+    fuelWarn.beeps = (fuelWarn.beeps + 1) % 2;
+    // interval kembali: dua bip rapat lalu jeda ~0.9s sampai putaran berikutnya
+    fuelWarn.next = ac.currentTime + (fuelWarn.beeps === 0 ? 0.9 : 0.14);
+  }
+
+  // Sirene jauh: gain merambat pelan mengikuti heat (makin panas makin terdengar).
+  function tickSirenAmbient() {
+    if (!ac || !sirenAmbGain) return;
+    const t = Math.max(0, Math.min(1, ctx.heat / 4));
+    sirenAmbGain.gain.setTargetAtTime(t * 0.04, ac.currentTime, 0.8);
+  }
+
   // ---------------------------------------------------------------------------
   // Reverb ekor sederhana: delay feedback pendek untuk "tail" suara senapan.
   // ---------------------------------------------------------------------------
@@ -341,6 +391,7 @@ export function createAudio() {
           master.gain.value = muted ? 0 : 0.35;
           master.connect(ac.destination);
           startSiren();
+          startSirenAmbient();
           radioNoise = noiseBuffer(1);
           startReverb();
           startMusic();
@@ -459,6 +510,7 @@ export function createAudio() {
     setEngine: safe((speed) => { setDrive(speed); }),
     // setWater(a): 0..1 kedekatan dengan laut/pantai untuk camar.
     setWater: safe((a) => setWater(a)),
+    setFuel: safe((f) => { ctx.fuel = Math.max(0, Math.min(1, f ?? 1)); }),
     // update(state): dipanggil tiap frame dari loop utama dengan snapshot konteks.
     update: safe((state) => {
       if (!ac) return;
@@ -468,9 +520,12 @@ export function createAudio() {
       ctx.district = state.district ?? 0;
       ctx.speed = speed;
       ctx.water = state.water ?? 0;
+      ctx.fuel = car ? Math.max(0, Math.min(1, car.nitroFuel ?? 1)) : 1;
       setDrive(speed);
       setWater(ctx.water);
       tickAmbience();
+      tickFuelWarn();
+      tickSirenAmbient();
     }),
   };
 }
