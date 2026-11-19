@@ -1,6 +1,8 @@
 // interiors.js — tiga interior sederhana (restoran, toko senjata, bank): masuk/keluar dengan E
 import * as THREE from '../vendor/three.module.min.js';
 import { T, tileAt, WORLD_W, WORLD_H } from './world.js';
+import { refill } from './weapons.js';
+import { addHeat } from './police.js';
 
 const HALF_W = 120, HALF_D = 90, WALL_H = 44, WALK = 150, DOOR_RANGE = 30, PLAYER_R = 8;
 const KINDS = [
@@ -9,6 +11,12 @@ const KINDS = [
   { name: 'BANK', color: 0x4aa8ff, floor: 0xb9b3a4, wall: 0xdcd6c6 },
 ];
 const SIDES = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+const USE_RANGE = 34, VAULT_CASH = 2500, AMMO_PRICE = 200, MEAL_PRICE = 50, HEIST_HEAT = 390;
+const SPOTS = [
+  [[-70, -40], [0, -40], [70, -40], [-70, 20], [70, 20]].map(([x, z]) => ({ x, z, id: 'meal', label: 'E: makan (pulihkan HP) $' + MEAL_PRICE })),
+  [{ x: 0, z: -14, id: 'ammo', label: 'E: beli ammo $' + AMMO_PRICE }],
+  [{ x: 0, z: -50, id: 'vault', label: 'E: buka vault' }],
+];
 
 function pickDoors(world, player) {
   const doors = [];
@@ -79,12 +87,12 @@ function furnish(g, i) {
     box(g, 200, 22, 12, 0, 11, -30, 0x6e5a3a);
     box(g, 200, 18, 2, 0, 31, -30, 0x9fd0e8).material.transparent = true;
     box(g, 54, 40, 24, 0, 20, -HALF_D + 14, 0x8c929a);
-    box(g, 30, 30, 3, 0, 20, -HALF_D + 26, 0xc9a227);
+    g.userData.vaultDoor = box(g, 30, 30, 3, 0, 20, -HALF_D + 26, 0xc9a227);
     for (const x of [-80, 80]) box(g, 14, 14, 14, x, 7, 30, 0x2f6b4a);
   }
 }
 
-export function createInteriors({ world, player, ui, gfx }) {
+export function createInteriors({ world, player, ui, gfx, combat }) {
   const doors = pickDoors(world, player);
   const rooms = KINDS.map((k, i) => { const g = buildRoom(k); furnish(g, i); gfx.scene.add(g); return g; });
   const exitPos = { x: WORLD_W / 2, y: WORLD_H / 2 + HALF_D - 8 };
@@ -97,18 +105,52 @@ export function createInteriors({ world, player, ui, gfx }) {
     gfx.scene.add(m);
     return m;
   });
-  const it = { active: false, doors, current: -1, saved: null, hinted: new Set() };
+  const it = { active: false, doors, current: -1, saved: null, vaultOpen: false, heistPending: false };
 
   const nearDoor = () => doors.find((d) => Math.hypot(d.x - player.x, d.y - player.y) < DOOR_RANGE);
+  const nearSpot = () => {
+    if (!it.active) return null;
+    const cx = WORLD_W / 2, cy = WORLD_H / 2;
+    return SPOTS[doors[it.current].kind].find((s) => Math.hypot(cx + s.x - player.x, cy + s.z - player.y) < USE_RANGE) || null;
+  };
+  const nearExit = () => Math.hypot(player.x - exitPos.x, player.y - exitPos.y) <= DOOR_RANGE;
+
+  function useSpot(s) {
+    if (s.id === 'vault') {
+      if (it.vaultOpen) { ui.toast('Vault sudah kosong'); return; }
+      it.vaultOpen = true; it.heistPending = true;
+      const door = rooms[2].userData.vaultDoor;
+      door.rotation.y = -1.2; door.position.x -= 14; door.position.z += 10;
+      ui.addMoney(VAULT_CASH);
+    } else if (s.id === 'ammo') {
+      if (ui.money < AMMO_PRICE) { ui.toast('Uang kurang ($' + AMMO_PRICE + ')'); return; }
+      ui.addMoney(-AMMO_PRICE);
+      if (combat) refill(combat.ammo);
+      ui.toast('AMMO +');
+    } else if (s.id === 'meal') {
+      if (player.health >= player.maxHealth) { ui.toast('HP sudah penuh'); return; }
+      if (ui.money < MEAL_PRICE) { ui.toast('Uang kurang ($' + MEAL_PRICE + ')'); return; }
+      ui.addMoney(-MEAL_PRICE);
+      player.health = player.maxHealth;
+      ui.toast('HP pulih');
+    }
+  }
 
   it.tryInteract = () => {
     if (it.active) {
-      if (Math.hypot(player.x - exitPos.x, player.y - exitPos.y) > DOOR_RANGE) return true;
+      const s = nearSpot();
+      if (s) { useSpot(s); return true; }
+      if (!nearExit()) return true;
       const d = doors[it.current];
       rooms[d.kind].visible = false;
       player.x = d.x; player.y = d.y; player.vx = player.vy = 0;
       it.active = false; it.current = -1;
       gfx.camera.userData.look = null;
+      if (it.heistPending) {
+        it.heistPending = false;
+        addHeat(world, Math.max(0, HEIST_HEAT - world.police.heat), 'heist');
+        ui.toast('PERAMPOKAN BANK!', 3);
+      }
       return true;
     }
     if (player.car) return false;
@@ -125,9 +167,11 @@ export function createInteriors({ world, player, ui, gfx }) {
   it.update = (dt, keys) => {
     if (!it.active) {
       const d = player.car ? null : nearDoor();
-      if (d && !it.hinted.has(d.kind)) { it.hinted.add(d.kind); ui.toast('E: masuk ' + KINDS[d.kind].name, 2.5); }
+      ui.prompt = d ? 'E: masuk ' + KINDS[d.kind].name : null;
       return false;
     }
+    const s = nearSpot();
+    ui.prompt = s ? (s.id === 'vault' && it.vaultOpen ? null : s.label) : nearExit() ? 'E: keluar' : null;
     const k = (n) => keys.has(n);
     let ix = (k('d') || k('arrowright') ? 1 : 0) - (k('a') || k('arrowleft') ? 1 : 0);
     let iy = (k('s') || k('arrowdown') ? 1 : 0) - (k('w') || k('arrowup') ? 1 : 0);

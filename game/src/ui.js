@@ -79,6 +79,12 @@ function drawPlaying(ctx, ui) {
     ctx.fillStyle = '#ffe27a';
     ctx.strokeText(t.text, W - 20, 144 + i * 26); ctx.fillText(t.text, W - 20, 144 + i * 26);
   });
+  if (ui.prompt) {
+    ctx.globalAlpha = 1; ctx.textAlign = 'center'; ctx.font = 'bold 18px sans-serif';
+    const tw = ctx.measureText(ui.prompt).width + 28;
+    ctx.fillStyle = 'rgba(8,8,14,0.72)'; ctx.fillRect(W / 2 - tw / 2, H - 112, tw, 32);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(ui.prompt, W / 2, H - 90);
+  }
   if (ui.stationT > 0 && ui.station) {
     ctx.globalAlpha = Math.min(1, ui.stationT / 0.5);
     ctx.textAlign = 'center'; ctx.font = 'bold 20px sans-serif'; ctx.fillStyle = '#7fe3ff';

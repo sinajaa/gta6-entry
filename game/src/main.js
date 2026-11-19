@@ -41,7 +41,7 @@ const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
-const interiors = createInteriors({ world, player, ui, gfx });
+const interiors = createInteriors({ world, player, ui, gfx, combat });
 gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
@@ -127,6 +127,7 @@ function frame(now) {
   if (shot) shot.tick(dt);
   const car = player.car;
   crashCooldown = Math.max(0, crashCooldown - dt);
+  if (car) ui.prompt = null;
   if (car) {
     const speedBefore = Math.abs(car.speed);
     updateDrivenCar(car, input, world, dt);
