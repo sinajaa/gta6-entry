@@ -4,6 +4,10 @@ This checkpoint adds "feel" to combat and vehicles: every shot has weight, every
 
 ## What was added
 
+### Compact SMG (new weapon)
+- A fifth weapon, the compact SMG (`compactsmg` in `weapons.js`), sits at slot 5 in the weapon switch order and the weapon wheel. It fires faster and spreads more than the pistol but hits softer per shot, with its own cool blue muzzle-flash colour instead of the standard warm-white.
+- It carries a 32-round magazine: the HUD shows `rounds/reserve` (e.g. `32/64`), and when the mag runs dry the player reloads — press `G` or keep firing to trigger it automatically, drawing fresh rounds from the reserve pool. Ammo pickups refill the reserve.
+
 ### Per-weapon recoil and camera kick
 - Each weapon in `weapons.js` now carries `recoil` (aim drift that accumulates while firing) and `kick` (an upward camera pitch impulse on each shot).
 - `combat.js` applies the camera kick as a short-lived pitch offset on the active camera, and the recoil drifts subsequent shots upward until it decays.

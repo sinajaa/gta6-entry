@@ -14,7 +14,7 @@ SUNNY CITY is a fully offline, three.js-rendered 3D sandbox with no build step a
 
 - Explore a procedural city with 3 districts, and walk into interiors: a diner, a gun shop and a bank with a vault.
 - Play 8 chained story missions: courier, car chase, execution, escort, warehouse theft, race, police siege and a finale.
-- Switch between 4 weapons (pistol, SMG, shotgun, rifle) with a weapon wheel.
+- Switch between 5 weapons (pistol, compact SMG, SMG, shotgun, rifle) with a weapon wheel.
 - Feel every shot: per-weapon recoil and camera kick, muzzle flash lighting with tracers, hit markers and impact sparks, and tumbling shell casings.
 - Blow up cars before the cops get you — damaged vehicles scorch, deform, smoke and explode into a fireball with flying debris and a shockwave that shakes the screen.
 - Knock pedestrians off their feet with a short ragdoll-like tumble.
@@ -32,7 +32,8 @@ SUNNY CITY is a fully offline, three.js-rendered 3D sandbox with no build step a
 | WASD / arrows | Move, drive |
 | Shift | Sprint (nitro in a car with nitro) |
 | Mouse / F | Aim with the mouse; shoot with left button or F |
-| 1-4 | Select weapon |
+| 1-5 | Select weapon |
+| G | Reload (compact SMG) |
 | Q (hold) | Weapon wheel |
 | E | Enter or exit a car, use doors and the garage |
 | R | Next radio station (while driving) |

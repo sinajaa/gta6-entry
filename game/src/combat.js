@@ -6,7 +6,7 @@ import { hasLineOfSight, addHeat } from './police.js';
 import { alarmPeds } from './peds.js';
 
 export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48, SHELL_MAX = 40, DEBRIS_MAX = 48, SMOKE_MAX = 64, FIREBALL_MAX = 6;
-import { WEAPONS, WEAPON_ORDER, createAmmo, refill, createPickups, updatePickups } from './weapons.js';
+import { WEAPONS, WEAPON_ORDER, createAmmo, createMags, refill, createPickups, updatePickups } from './weapons.js';
 const RANGE = 600, PED_RADIUS = 14, CAR_HALF_L = 28, CAR_HALF_W = 11, DRIVEBY_SPREAD = 0.10;
 const CAR_HP = 100, PED_HP = 50;
 const MAX_HEALTH = 100, REGEN_DELAY = 6, REGEN_RATE = 2;
@@ -79,6 +79,8 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     aim: { x: player.x + 100, y: player.y },
     weapon: 'pistol',
     ammo: createAmmo(),
+    mag: createMags(),
+    reloading: 0,
     pickups: createPickups(),
     wheelOpen: false,
     cool: 0,
@@ -172,32 +174,42 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
       c.recoil = Math.max(0, c.recoil - dt * 0.12);
       c.hit.t = Math.max(0, c.hit.t - dt);
       c.cool = Math.max(0, c.cool - dt);
+      if (c.reloading > 0) {
+        c.reloading -= dt;
+        if (c.reloading <= 0) finishReload();
+      }
       tickFx(dt);
       updateCarFx(dt);
       updateAim();
-      const doSwitch = (id) => { if (id !== c.weapon) { c.weapon = id; c.cool = Math.max(c.cool, WEAPONS[id].switchMs); } };
+      const doSwitch = (id) => { if (id !== c.weapon) { c.weapon = id; c.cool = Math.max(c.cool, WEAPONS[id].switchMs); c.reloading = 0; } };
       WEAPON_ORDER.forEach((id, i) => { if (keys.has(String(i + 1)) && !prevKeys.has(String(i + 1))) doSwitch(id); });
       const q = keys.has('q') && !c.dead;
       if (q) {
         const dx = c.mouse.x - 480, dy = c.mouse.y - 270;
         if (Math.hypot(dx, dy) > 25) {
           const a = Math.atan2(dy, dx);
-          c.wheelSel = Math.round((a + Math.PI / 2) / (Math.PI / 2) + 8) % 4;
+          const slots = WEAPON_ORDER.length;
+          c.wheelSel = Math.round((a + Math.PI / 2) / (Math.PI * 2 / slots) + slots * 2) % slots;
         }
       } else if (c.wheelOpen && c.wheelSel != null) { doSwitch(WEAPON_ORDER[c.wheelSel]); c.wheelSel = null; }
       c.wheelOpen = q;
-      prevKeys = new Set(keys);
       const wd = WEAPONS[c.weapon];
+      const magGun = wd.mag != null;
+      if (keys.has('g') && !prevKeys.has('g') && !c.dead && magGun && (c.mag[c.weapon] < wd.mag) && (c.ammo[c.weapon] > 0)) startReload();
+      prevKeys = new Set(keys);
       ui.weapon = c.weapon;
       ui.weaponName = wd.name;
       ui.weaponIndex = WEAPON_ORDER.indexOf(c.weapon) + 1;
-      ui.ammo = c.ammo[c.weapon];
+      ui.ammo = magGun ? c.mag[c.weapon] : c.ammo[c.weapon];
+      ui.magSize = magGun ? wd.mag : null;
+      ui.reserve = magGun ? c.ammo[c.weapon] : null;
+      ui.reloading = c.reloading > 0;
       ui.wheel = q ? { sel: c.wheelSel, ammo: c.ammo } : null;
       ui.hit = c.hit;
       if (c.dead) { tickDead(rawDt); return; }
       updateAmmoPickups(dt);
 
-      if ((c.mouseDown || keys.has('f')) && !q && c.cool <= 0) fire();
+      if ((c.mouseDown || keys.has('f')) && !q && c.cool <= 0 && c.reloading <= 0) fire();
       c.sinceHit += dt;
       if (c.sinceHit >= REGEN_DELAY && player.health < MAX_HEALTH) player.health = Math.min(MAX_HEALTH, player.health + REGEN_RATE * dt);
       updateCops(dt);
@@ -379,12 +391,15 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
 
   function fire() {
     const w = WEAPONS[c.weapon];
-    if (c.ammo[c.weapon] <= 0) {
+    const magGun = w.mag != null;
+    const rounds = magGun ? c.mag[c.weapon] : c.ammo[c.weapon];
+    if (rounds <= 0) {
+      if (magGun && (c.ammo[c.weapon] || 0) > 0) { startReload(); return; }
       c.cool = 0.35;
       if (!c.dryT || c.dryT < performance.now() - 1500) { ui.toast(w.name + ' KOSONG'); c.dryT = performance.now(); }
       return;
     }
-    c.ammo[c.weapon]--;
+    if (magGun) c.mag[c.weapon]--; else c.ammo[c.weapon]--;
     if (audio) audio.shot(c.weapon);
     const car = player.car, src = car || player;
     let base, spread;
@@ -399,13 +414,14 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     const reach = car ? 30 : 16;
     const mz = car ? 14 : MUZZLE_H;
     const mxx = src.x + Math.cos(base) * reach, myy = src.y + Math.sin(base) * reach;
+    const flashColor = w.flash || PLAYER_COLOR;
     const hits = new Map();
     for (let i = 0; i < w.pellets; i++) {
       const angle = base + (Math.random() * 2 - 1) * spread;
       const hit = c.hitscan(src, angle, { exclude: car, range: w.range });
       const mx = src.x + Math.cos(angle) * reach, my = src.y + Math.sin(angle) * reach;
-      addTracer(mx, my, mz, hit.x, hit.y, 12, 1.4, PLAYER_COLOR, 0.1);
-      if (i === 0) addFlash(mx, my, mz, angle, w.pellets > 1 ? 26 : 18, PLAYER_COLOR, 0.06);
+      addTracer(mx, my, mz, hit.x, hit.y, 12, 1.4, flashColor, 0.1);
+      if (i === 0) addFlash(mx, my, mz, angle, w.pellets > 1 ? 26 : 18, flashColor, 0.06);
       if (hit.kind !== 'none' && (i < 2 || w.pellets === 1)) addSparks(hit.x, hit.y, hit.kind === 'wall' ? 3 : 2);
       if (hit.target) {
         const e = hits.get(hit.target);
@@ -415,6 +431,22 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     addShell(mxx, myy, mz, base, 0.5);
     alarmPeds(peds, src.x, src.y, 150);
     for (const { hit, dmg } of hits.values()) damage(hit, dmg);
+  }
+
+  function startReload() {
+    const w = WEAPONS[c.weapon];
+    if (!w.mag || c.reloading > 0 || c.mag[c.weapon] >= w.mag || (c.ammo[c.weapon] || 0) <= 0) return;
+    c.reloading = w.reloadMs;
+    ui.toast(w.name + ' RELOAD');
+  }
+
+  function finishReload() {
+    c.reloading = 0;
+    const w = WEAPONS[c.weapon];
+    if (!w.mag) return;
+    const need = w.mag - (c.mag[c.weapon] || 0);
+    const take = Math.min(need, c.ammo[c.weapon] || 0);
+    if (take > 0) { c.ammo[c.weapon] -= take; c.mag[c.weapon] = (c.mag[c.weapon] || 0) + take; }
   }
 
   function hurtPlayer(dmg) {
@@ -531,7 +563,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     if (best) { player.x = best.x; player.y = best.y; }
     player.vx = 0; player.vy = 0;
     player.health = MAX_HEALTH;
-    c.sinceHit = REGEN_DELAY; c.bust = 0; c.bustProgress = 0; c.vignette = 0; c.shake = 0; c.explShake = 0; c.kick = 0; c.recoil = 0;
+    c.sinceHit = REGEN_DELAY; c.bust = 0; c.bustProgress = 0; c.vignette = 0; c.shake = 0; c.explShake = 0; c.kick = 0; c.recoil = 0; c.mag = createMags(); c.reloading = 0;
     for (const t of c.tracers) t.t = 0;
     for (const f of c.flashes) f.t = 0;
     for (const s of c.shells) s.t = 0;

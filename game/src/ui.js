@@ -324,8 +324,8 @@ function drawGarage(ctx, ui) {
   ctx.restore();
 }
 
-const WEAPON_IDS = ['pistol', 'smg', 'shotgun', 'rifle'];
-const WEAPON_LABEL = { pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN', rifle: 'RIFLE' };
+const WEAPON_IDS = ['pistol', 'smg', 'shotgun', 'rifle', 'compactsmg'];
+const WEAPON_LABEL = { pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN', rifle: 'RIFLE', compactsmg: 'COMPACT SMG' };
 function drawWeapon(ctx, ui) {
   if (!ui.weapon) return;
   ctx.save();
@@ -334,8 +334,16 @@ function drawWeapon(ctx, ui) {
   ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText((ui.weaponName || WEAPON_LABEL[ui.weapon]) + ' [' + (ui.weaponIndex || 1) + ']', W - 162, H - 47);
   ctx.textAlign = 'right';
-  ctx.fillStyle = ui.ammo > 0 ? '#ffe27a' : '#ff4a4a';
-  ctx.fillText(ui.ammo > 0 ? String(ui.ammo) : 'KOSONG', W - 28, H - 47);
+  let ammoText;
+  if (ui.reserve != null) {
+    const mag = ui.reloading ? '< ' + (ui.ammo || 0) : String(ui.ammo || 0);
+    ammoText = mag + '/' + ui.reserve;
+    ctx.fillStyle = ui.reloading ? '#79c2ff' : (ui.ammo > 0 ? '#ffe27a' : '#ff4a4a');
+  } else {
+    ammoText = ui.ammo > 0 ? String(ui.ammo) : 'KOSONG';
+    ctx.fillStyle = ui.ammo > 0 ? '#ffe27a' : '#ff4a4a';
+  }
+  ctx.fillText(ammoText, W - 28, H - 47);
   ctx.restore();
   drawPickups(ctx, ui);
   drawWheel(ctx, ui);
@@ -358,7 +366,11 @@ function drawWheel(ctx, ui) {
   const wh = ui.wheel;
   if (!wh) return;
   const cx = 480, cy = 270, r = 80;
-  const pos = [[0, -r], [r, 0], [0, r], [-r, 0]];
+  const n = WEAPON_IDS.length;
+  const pos = WEAPON_IDS.map((_, i) => {
+    const a = -Math.PI / 2 + i * (Math.PI * 2 / n);
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  });
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.beginPath(); ctx.arc(cx, cy, r + 42, 0, Math.PI * 2); ctx.fill();
   ctx.textAlign = 'center'; ctx.font = 'bold 15px sans-serif';

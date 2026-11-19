@@ -374,6 +374,7 @@ export function createAudio() {
   const GUNS = {
     pistol: { f: 180, dur: 0.14, lp: 3200, vol: 0.7, rev: 0.3, noise: 0.16 },
     smg:    { f: 240, dur: 0.09, lp: 4200, vol: 0.5, rev: 0.2, noise: 0.1 },
+    compactsmg: { f: 260, dur: 0.08, lp: 5000, vol: 0.42, rev: 0.18, noise: 0.08 },
     shotgun: { f: 120, dur: 0.28, lp: 1600, vol: 0.9, rev: 0.5, noise: 0.34 },
     rifle:  { f: 210, dur: 0.12, lp: 3800, vol: 0.65, rev: 0.35, noise: 0.14 },
     cop:    { f: 200, dur: 0.12, lp: 3400, vol: 0.55, rev: 0.28, noise: 0.12 },
