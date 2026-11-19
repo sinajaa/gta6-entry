@@ -5,6 +5,7 @@ import { updateCamera3D } from './camera.js';
 import { initRenderer, renderFrame } from './render3d.js';
 import { createPolice, addHeat, updateWanted, updatePolice } from './police.js';
 import { createUI } from './ui.js';
+import { createPeds, updatePeds, alarmPeds } from './peds.js';
 import { createAudio } from './audio.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
@@ -21,6 +22,7 @@ const spawnSpot = [[SPAWN_SIDE, 0], [-SPAWN_SIDE, 0], [0, SPAWN_SIDE], [0, -SPAW
 if (!spawnSpot) throw new Error('spawn: tidak ada sisi mobil yang bebas');
 [player.x, player.y] = spawnSpot;
 const police = createPolice(world);
+const peds = createPeds(world, 72);
 const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
 let crashCooldown = 0;
 const gfx = initRenderer(canvas, document.getElementById('hud'), world);
@@ -29,7 +31,7 @@ const ui = createUI(document.getElementById('hud'));
 const audio = createAudio();
 const SIREN_RANGE = 600;
 updateCamera3D(gfx.camera, player, 'walk', 1);
-renderFrame(gfx, world, player, 0, police);
+renderFrame(gfx, world, player, 0, police, peds);
 
 function startGame() { audio.start(); audio.click(); }
 addEventListener('pointerdown', () => { if (ui.click() === 'start') startGame(); });
@@ -69,6 +71,7 @@ function frame(now) {
     if (speedBefore > CRASH_MIN_SPEED && speedBefore - Math.abs(car.speed) > CRASH_SPEED_DROP && crashCooldown === 0) {
       addHeat(world, 25, 'crash');
       audio.crash((speedBefore - Math.abs(car.speed)) / 200);
+      alarmPeds(peds, car.x, car.y, 300);
       crashCooldown = CRASH_COOLDOWN;
     }
   }
@@ -76,8 +79,12 @@ function frame(now) {
   updateTraffic(world, dt);
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
+  if (police.stars >= 3) {
+    for (const cop of police.cars) if (Math.hypot(cop.x - (car || player).x, cop.y - (car || player).y) < 250) alarmPeds(peds, cop.x, cop.y, 200);
+  }
+  updatePeds(world, player, peds, dt);
   updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
-  renderFrame(gfx, world, player, fps, police);
+  renderFrame(gfx, world, player, fps, police, peds);
   const focus = car || player;
   let nearest = Infinity;
   for (const cop of police.cars) nearest = Math.min(nearest, Math.hypot(cop.x - focus.x, cop.y - focus.y));
@@ -88,4 +95,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { ui, audio, world, player, police, keys, gfx, cars: world.cars };
+window.__game = { ui, audio, world, player, police, peds, keys, gfx, cars: world.cars };

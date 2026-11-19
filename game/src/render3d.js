@@ -11,6 +11,8 @@ const ROOF_BOOST = 1.25;
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
 const MAX_CARS = 64;
+const MAX_PEDS = 80, PED_DRAW_RADIUS = 700, PED_HEIGHT = 16;
+const PED_SHIRTS = ['#ffffff', '#2a5aff', '#e0262b', '#f5c518'];
 const MAX_LIGHTS = 16, LIGHT_HZ = 6;
 const LIGHT_SIZE = { length: 6, height: 3, width: 8 };
 const EVADE_MAX = [10, 14, 18, 24, 30];
@@ -224,6 +226,17 @@ export function buildWorldMeshes(gfx, world) {
   playerMesh.castShadow = true;
   gfx.scene.add(playerMesh);
   gfx.playerMesh = playerMesh;
+
+  const pedMesh = new THREE.InstancedMesh(
+    new THREE.CapsuleGeometry(3.5, 9, 3, 8),
+    new THREE.MeshLambertMaterial(),
+    MAX_PEDS,
+  );
+  pedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  pedMesh.frustumCulled = false;
+  pedMesh.count = 0;
+  gfx.scene.add(pedMesh);
+  gfx.pedMesh = pedMesh;
 
   buildHeli(gfx);
   buildProps(gfx, world);
@@ -571,8 +584,32 @@ export function syncActors(gfx, world, player) {
   }
 }
 
-export function renderFrame(gfx, world, player, fps, police) {
+const pedScale = new THREE.Vector3(1, 1, 1);
+function syncPeds(gfx, player, peds) {
+  const mesh = gfx.pedMesh;
+  if (!mesh || !peds) return;
+  const focus = player.car || player;
+  let n = 0;
+  for (let i = 0; i < peds.length && n < MAX_PEDS; i++) {
+    const p = peds[i];
+    if (Math.hypot(p.x - focus.x, p.y - focus.y) > PED_DRAW_RADIUS) continue;
+    const cower = p.state === 'COWER';
+    pedScale.set(1, cower ? 0.6 : 1, 1);
+    carPosition.set(p.x - WORLD_W / 2, (PED_HEIGHT * pedScale.y) / 2 + 1, p.y - WORLD_H / 2);
+    carQuaternion.setFromAxisAngle(yAxis, -p.angle);
+    carMatrix.compose(carPosition, carQuaternion, pedScale);
+    mesh.setMatrixAt(n, carMatrix);
+    mesh.setColorAt(n, carColor.set(PED_SHIRTS[i % PED_SHIRTS.length]));
+    n++;
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+export function renderFrame(gfx, world, player, fps, police, peds) {
   syncActors(gfx, world, player);
+  syncPeds(gfx, player, peds);
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
