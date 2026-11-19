@@ -1,6 +1,11 @@
-// touch.js — joystick virtual + tombol sentuh (E/F/LARI/PAUSE) untuk HP
+// touch.js — joystick virtual + tombol sentuh (E/F/LARI/HANDBRAKE/PAUSE) untuk HP
 // SUNNY CITY — authored pass 2026-11-19 (recording 03)
-const BUTTON_KEYS = { e: 'e', f: 'f', run: 'shift', pause: 'Escape' };
+const BUTTON_KEYS = { e: 'e', f: 'f', run: 'shift', brake: ' ', pause: 'Escape' };
+const DEAD_ZONE = 0.12;
+
+function vibrate(ms = 12) {
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) { /* not supported */ }
+}
 
 export function createTouch({ onStick, onButton }) {
   const root = document.getElementById('touch');
@@ -16,7 +21,7 @@ export function createTouch({ onStick, onButton }) {
     const radius = r.width / 2;
     let dx = (e.clientX - (r.left + radius)) / radius, dy = (e.clientY - (r.top + radius)) / radius;
     const len = Math.hypot(dx, dy);
-    if (len < 0.12) { dx = dy = 0; }
+    if (len < DEAD_ZONE) { dx = dy = 0; }
     else if (len > 1) { dx /= len; dy /= len; }
     knob.style.transform = `translate(${dx * radius * 0.6}px, ${dy * radius * 0.6}px)`;
     onStick(dx, dy);
@@ -27,9 +32,25 @@ export function createTouch({ onStick, onButton }) {
   stick.addEventListener('pointerup', (e) => { if (e.pointerId === stickId) endStick(); });
   stick.addEventListener('pointercancel', (e) => { if (e.pointerId === stickId) endStick(); });
 
+  // LARI adalah tombol toggle: sekali tekan menyala, sekali tekan lagi mati.
+  let sprintOn = false;
   for (const btn of root.querySelectorAll('[data-btn]')) {
     const key = BUTTON_KEYS[btn.dataset.btn];
-    btn.addEventListener('pointerdown', (e) => { btn.setPointerCapture(e.pointerId); btn.classList.add('down'); onButton(key, true); e.preventDefault(); });
+    const isRunToggle = btn.dataset.btn === 'run';
+    btn.addEventListener('pointerdown', (e) => {
+      btn.setPointerCapture(e.pointerId);
+      vibrate();
+      if (isRunToggle) {
+        sprintOn = !sprintOn;
+        btn.classList.toggle('down', sprintOn);
+        onButton(key, sprintOn);
+      } else {
+        btn.classList.add('down');
+        onButton(key, true);
+      }
+      e.preventDefault();
+    });
+    if (isRunToggle) continue;
     const up = () => { btn.classList.remove('down'); onButton(key, false); };
     btn.addEventListener('pointerup', up);
     btn.addEventListener('pointercancel', up);

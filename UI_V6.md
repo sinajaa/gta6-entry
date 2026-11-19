@@ -50,4 +50,6 @@ The game world is frozen while in any of these screens, so the orbit camera rend
 - `game/src/main.js` — key routing for `M` / `Tab` / `P`, photo-mode camera orbit and screenshot, `applySettings` wiring.
 - `game/src/audio.js` — added `setVolume`.
 - `game/src/combat.js` — added `sens` and centre-scaled mouse mapping.
+- `game/src/touch.js` — bigger stick/button hit areas with a visible dead-zone ring, a dedicated **REM** (handbrake) button, a persistent **LARI** (sprint) toggle, and haptic vibration on press (`navigator.vibrate`).
+- `game/index.html` — touch control markup/CSS for the dead-zone ring, enlarged buttons and the new handbrake button.
 - `README.md` — updated controls table.
