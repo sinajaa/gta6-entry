@@ -1451,8 +1451,10 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   gfx.sun.position.set(tx, 0, tz).add(gfx.sunDirOverride || SUN_DIR);
   syncCarLights(gfx, world);
   if (gfx.beforeDraw) gfx.beforeDraw();
+  if (gfx.interiorBefore) gfx.interiorBefore();
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
   gfx.renderer.render(gfx.scene, gfx.camera);
+  if (gfx.interiorAfter) gfx.interiorAfter();
   if (combat) combat.clearShake(gfx.camera);
   drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera, combat);
 }

@@ -14,6 +14,7 @@ import { createTouch } from './touch.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 import { createShot } from './shots.js';
 import { createExtras } from './extras.js';
+import { createInteriors } from './interiors.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -40,6 +41,8 @@ const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
+const interiors = createInteriors({ world, player, ui, gfx });
+gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
@@ -56,6 +59,7 @@ addEventListener('beforeunload', () => ui.save());
 
 function enterExit() {
   if (extras.garage.open) return;
+  if (interiors.tryInteract()) return;
   const wasOnFoot = !player.car;
   toggleVehicle(world, player);
   if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
@@ -134,7 +138,7 @@ function frame(now) {
       crashCooldown = CRASH_COOLDOWN;
     }
   }
-  else updatePlayer(player, input, world, dt);
+  else if (!interiors.update(dt, input)) updatePlayer(player, input, world, dt);
   extras.update(dt);
   setRadioKey();
   updateTraffic(world, dt);
@@ -146,7 +150,7 @@ function frame(now) {
   updatePeds(world, player, peds, dt);
   missions.update(dt, player, world);
   combat.update(dt, keys, rawDt);
-  updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
+  if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
   renderFrame(gfx, world, player, fps, police, peds, missions, combat);
   const focus = car || player;
@@ -159,4 +163,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
