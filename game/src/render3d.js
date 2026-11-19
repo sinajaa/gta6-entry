@@ -4,9 +4,9 @@ import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';
 
 const GROUND_COLORS = { [T.ROAD]: '#9aa0a6', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
-const HORIZON = 0xf6c48c;
+const HORIZON = 0xf0b88a;
 const SHADOW_HALF = 560;
-const SUN_OFFSET = new THREE.Vector3(-900, 420, -500);
+const SUN_OFFSET = new THREE.Vector3(-760, 460, -540);
 const ROOF_BOOST = 1.25;
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
@@ -26,12 +26,31 @@ function makeSkyTexture() {
   const g = ctx.createLinearGradient(0, 0, 0, 256);
   g.addColorStop(0, '#2f5f9e');
   g.addColorStop(0.18, '#7fa6c9');
-  g.addColorStop(0.27, '#f6c48c');
-  g.addColorStop(1, '#f6c48c');
+  g.addColorStop(0.27, '#f0b88a');
+  g.addColorStop(1, '#f0b88a');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 4, 256);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function makeWindowGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillStyle = '#ffcf7a';
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 8; col++) {
+      if ((row * 7 + col * 13) % 11 < 2) ctx.fillRect(col * 32 + 5, row * 64 + 12, 22, 38);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
   return texture;
 }
 
@@ -69,17 +88,18 @@ export function initRenderer(canvas, hudCanvas, world) {
   renderer.shadowMap.type = software ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 0.92;
+  canvas.style.filter = 'contrast(1.18) saturate(1.22) brightness(0.97)';
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
   scene.background = makeSkyTexture();
-  scene.fog = new THREE.Fog(HORIZON, 350, 1500);
-  scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x9a8a6a, 0.9));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+  scene.fog = new THREE.Fog(HORIZON, 600, 2200);
+  scene.add(new THREE.HemisphereLight(0x8fb4e8, 0x4a3a2a, 0.55));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 
   const shadowSize = renderer.capabilities.isWebGL2 ? 2048 : 1024;
-  const sun = new THREE.DirectionalLight(0xffc890, 2.6);
+  const sun = new THREE.DirectionalLight(0xffc48a, 3.4);
   sun.position.copy(SUN_OFFSET);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = !software;
@@ -89,10 +109,11 @@ export function initRenderer(canvas, hudCanvas, world) {
   Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 100, far: 1800 });
   scene.add(sun, sun.target);
 
-  const camera = new THREE.PerspectiveCamera(48, 960 / 540, 3, 1700);
+  const camera = new THREE.PerspectiveCamera(60, 960 / 540, 2, 2400);
   const gfx = { renderer, scene, camera, sun, software, shadowSize, frameNo: 0, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1 };
   buildWorldMeshes(gfx, world);
   buildCombatFx(gfx);
+  gfx.metrics = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
   return gfx;
 }
 
@@ -227,22 +248,22 @@ export function makeGroundTexture(world, renderer, software = false) {
     const sc = sh.getContext('2d');
     sc.scale(size / WORLD_W, size / WORLD_H);
     sc.fillStyle = '#000';
-    const k = Math.hypot(900, 500) / 420, ux = 900 / Math.hypot(900, 500), uy = 500 / Math.hypot(900, 500);
+    const hs = Math.hypot(760, 540), k = hs / 460, ux = 760 / hs, uy = 540 / hs, ox = ux * 30, oy = uy * 30;
     for (const b of world.buildings) {
       const dx = ux * k * b.height, dy = uy * k * b.height;
       const pts = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
       sc.fillRect(b.x, b.y, b.w, b.h);
-      sc.fillRect(b.x + dx, b.y + dy, b.w, b.h);
+      sc.fillRect(b.x + dx + ox, b.y + dy + oy, b.w, b.h);
       for (let i = 0; i < 4; i++) {
         const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % 4];
         sc.beginPath();
-        sc.moveTo(ax, ay); sc.lineTo(bx, by); sc.lineTo(bx + dx, by + dy); sc.lineTo(ax + dx, ay + dy);
+        sc.moveTo(ax, ay); sc.lineTo(bx, by); sc.lineTo(bx + dx + ox, by + dy + oy); sc.lineTo(ax + dx + ox, ay + dy + oy);
         sc.closePath(); sc.fill();
       }
     }
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha = 0.45;
     ctx.drawImage(sh, 0, 0);
     ctx.restore();
   }
@@ -267,6 +288,48 @@ export function makeGroundTexture(world, renderer, software = false) {
   return texture;
 }
 
+const GHOST_MAX = 8;
+function makeBuildingMaterial(gfx, facade, glow, ghost) {
+  const opts = { map: facade, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: gfx.software ? 0.35 : 0.6 };
+  if (ghost) Object.assign(opts, { transparent: true, opacity: 0.22, depthWrite: false });
+  const material = gfx.software
+    ? new THREE.MeshLambertMaterial(opts)
+    : new THREE.MeshStandardMaterial({ ...opts, roughness: 0.85, metalness: 0.0 });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+#ifdef USE_MAP
+  vec3 bsz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  float horiz = abs(normal.x) > 0.5 ? bsz.z : bsz.x;
+  vec2 bUv = vec2(uv.x * horiz / 256.0, uv.y * bsz.y / 128.0);
+  vMapUv = (mapTransform * vec3(bUv, 1.0)).xy;
+  #ifdef USE_EMISSIVEMAP
+  vEmissiveMapUv = (emissiveMapTransform * vec3(bUv, 1.0)).xy;
+  #endif
+#endif`);
+  };
+  return material;
+}
+
+export function syncGhosts(gfx, ids) {
+  const g = gfx.ghost;
+  if (!g || !ids) return;
+  const prev = g.ids;
+  if (prev.length === ids.length && prev.every((v, i) => v === ids[i])) return;
+  const arr = gfx.buildings.instanceMatrix.array;
+  for (const i of prev) for (let j = 0; j < 16; j++) arr[i * 16 + j] = g.orig[i * 16 + j];
+  ids.forEach((id, n) => {
+    gfx.buildings.getMatrixAt(id, g.m);
+    g.mesh.setMatrixAt(n, g.m);
+    g.mesh.setColorAt(n, g.c.set(g.colors[id]));
+    for (let j = 0; j < 16; j++) arr[id * 16 + j] = 0;
+  });
+  g.ids = ids.slice();
+  g.mesh.count = ids.length;
+  g.mesh.instanceMatrix.needsUpdate = true;
+  if (g.mesh.instanceColor) g.mesh.instanceColor.needsUpdate = true;
+  gfx.buildings.instanceMatrix.needsUpdate = true;
+}
+
 export function buildWorldMeshes(gfx, world) {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(WORLD_W, WORLD_H),
@@ -279,19 +342,9 @@ export function buildWorldMeshes(gfx, world) {
   const facade = makeFacadeTexture();
   const buildings = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
-    gfx.software
-      ? new THREE.MeshLambertMaterial({ map: facade, emissive: 0x222222 })
-      : new THREE.MeshStandardMaterial({ map: facade, roughness: 0.85, metalness: 0.0 }),
+    makeBuildingMaterial(gfx, facade, makeWindowGlowTexture(), false),
     world.buildings.length,
   );
-  buildings.material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
-#ifdef USE_MAP
-  vec3 bsz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
-  float horiz = abs(normal.x) > 0.5 ? bsz.z : bsz.x;
-  vMapUv = (mapTransform * vec3(uv.x * horiz / 256.0, uv.y * bsz.y / 128.0, 1.0)).xy;
-#endif`);
-  };
   const matrix = new THREE.Matrix4(), color = new THREE.Color();
   world.buildings.forEach((b, i) => {
     matrix.compose(
@@ -306,6 +359,15 @@ export function buildWorldMeshes(gfx, world) {
   buildings.instanceColor.needsUpdate = true;
   buildings.castShadow = buildings.receiveShadow = true;
   gfx.scene.add(buildings);
+  gfx.buildings = buildings;
+
+  const ghostMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), makeBuildingMaterial(gfx, facade, buildings.material.emissiveMap, true), GHOST_MAX);
+  ghostMesh.count = 0;
+  ghostMesh.frustumCulled = false;
+  ghostMesh.renderOrder = 2;
+  ghostMesh.setColorAt(0, color.set(0xffffff));
+  gfx.scene.add(ghostMesh);
+  gfx.ghost = { mesh: ghostMesh, ids: [], orig: buildings.instanceMatrix.array.slice(), colors: world.buildings.map((b) => b.color), m: new THREE.Matrix4(), c: new THREE.Color() };
 
   const roofs = new THREE.InstancedMesh(
     new THREE.PlaneGeometry(1, 1),
@@ -833,6 +895,7 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   syncPeds(gfx, player, peds);
   syncMarkers(gfx, missions);
   syncCombat(gfx, combat);
+  syncGhosts(gfx, gfx.camera.userData.ghost);
   if (combat) combat.applyShake(gfx.camera);
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;

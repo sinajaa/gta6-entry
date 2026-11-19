@@ -21,21 +21,24 @@ export function updateCamera(cam, target, world, dt, driving = false) {
   cam.y = Math.max(0, Math.min(world.height - cam.visH, cam.y));
 }
 
-const WALK = { up: 170, back: 520, fov: 48, lookY: 60 };
-const DRIVE = { up: 200, back: 600, fov: 52, lookY: 55 };
+const WALK = { up: 78, back: 230, fov: 60, lookY: 26 };
+const DRIVE = { up: 96, back: 290, fov: 64, lookY: 22 };
+const FOV_KICK = 6, KICK_SPEED = 0.8 * 320, PULL_DIST = 120, GHOST_MAX = 8, CAM_NEAR = 2, CAM_FAR = 2400;
 const MIN_DIST = 14, RAY_STEP = 8, RAY_SIDE = 10, RAY_MARGIN = 4;
 
-let heightGrid = null;
+let heightGrid = null, idGrid = null, hitId = -1;
 function buildHeightGrid(world) {
   heightGrid = new Uint16Array(COLS * ROWS);
-  for (const b of world.buildings) {
-    for (let y = b.y / TILE; y < (b.y + b.h) / TILE; y++) for (let x = b.x / TILE; x < (b.x + b.w) / TILE; x++) heightGrid[y * COLS + x] = b.height;
-  }
+  idGrid = new Int32Array(COLS * ROWS).fill(-1);
+  world.buildings.forEach((b, i) => {
+    for (let y = b.y / TILE; y < (b.y + b.h) / TILE; y++) for (let x = b.x / TILE; x < (b.x + b.w) / TILE; x++) { heightGrid[y * COLS + x] = b.height; idGrid[y * COLS + x] = i; }
+  });
 }
 function blockedAt(x, z, y) {
   const gx = Math.floor((x + WORLD_W_HALF) / TILE), gz = Math.floor((z + WORLD_H_HALF) / TILE);
   if (gx < 0 || gz < 0 || gx >= COLS || gz >= ROWS) return false;
-  return heightGrid[gz * COLS + gx] > y - RAY_MARGIN;
+  if (heightGrid[gz * COLS + gx] > y - RAY_MARGIN) { hitId = idGrid[gz * COLS + gx]; return true; }
+  return false;
 }
 // jarak dari titik look sepanjang arah (dx,dz) sampai kena bangunan; Infinity bila bebas
 function firstHit(lx, ly, lz, dx, dz, len, camY, offset) {
@@ -57,6 +60,8 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
   const tx = actor.x - WORLD_W_HALF, tz = actor.y - WORLD_H_HALF;
   const limX = WORLD_W_HALF + EDGE_MARGIN, limZ = WORLD_H_HALF + EDGE_MARGIN;
   const wantX = Math.max(-limX, Math.min(limX, tx + backX * (o.back + dolly)));
+  const kick = driving && Math.abs(actor.speed) > KICK_SPEED ? FOV_KICK : 0;
+  const wantFov = o.fov + kick;
   const wantY = o.up;
   const wantZ = Math.max(-limZ, Math.min(limZ, tz + backZ * (o.back + dolly)));
 
@@ -64,7 +69,8 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
   if (!state.look) {
     state.look = cam3d.position.clone().set(tx, o.lookY, tz);
     cam3d.position.set(wantX, wantY, wantZ);
-    cam3d.fov = o.fov;
+    cam3d.fov = wantFov;
+    cam3d.near = CAM_NEAR; cam3d.far = CAM_FAR;
     cam3d.updateProjectionMatrix();
   }
   const k = 1 - Math.pow(0.0015, dt);
@@ -81,7 +87,14 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
   if (world) {
     if (!heightGrid) buildHeightGrid(world);
     let hit = Infinity;
-    for (const off of [0, RAY_SIDE, -RAY_SIDE]) hit = Math.min(hit, firstHit(state.look.x, state.look.y, state.look.z, hx, hz, len, cam3d.position.y, off));
+    const ghost = state.ghost || (state.ghost = []);
+    ghost.length = 0;
+    for (const off of [0, RAY_SIDE, -RAY_SIDE]) {
+      const s = firstHit(state.look.x, state.look.y, state.look.z, hx, hz, len, cam3d.position.y, off);
+      if (s === Infinity) continue;
+      if (ghost.length < GHOST_MAX && !ghost.includes(hitId)) ghost.push(hitId);
+      if (s < PULL_DIST) hit = Math.min(hit, s);
+    }
     if (hit !== Infinity) {
       const dist = Math.max(MIN_DIST, hit - RAY_STEP);
       const shortfall = Math.max(0, MIN_DIST - (hit - RAY_STEP));
@@ -97,8 +110,8 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
     cam3d.position.z = tz + (pd > 0.001 ? pz * f : hz * MIN_DIST);
   }
   cam3d.lookAt(state.look);
-  if (Math.abs(cam3d.fov - o.fov) > 0.01) {
-    cam3d.fov += (o.fov - cam3d.fov) * 0.15;
+  if (Math.abs(cam3d.fov - wantFov) > 0.01) {
+    cam3d.fov += (wantFov - cam3d.fov) * 0.15;
     cam3d.updateProjectionMatrix();
   }
 }
