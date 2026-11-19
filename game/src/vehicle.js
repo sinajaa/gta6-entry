@@ -73,10 +73,17 @@ export function updateDrivenCar(car, keys, world, dt) {
   const throttle = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 0.6 : 0);
   const steer = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
   const previous = { x: car.x, y: car.y, angle: car.angle };
+  const boosting = car.nitro && car.nitroFuel > 0 && throttle > 0 && keys.has('shift');
+  if (car.nitro) {
+    car.nitroFuel = Math.max(0, Math.min(1, car.nitroFuel + (boosting ? -0.35 : 0.08) * dt));
+  }
+  const hpMax = car.maxHp || 100;
+  const health = 0.6 + 0.4 * Math.max(0, Math.min(1, (car.hp ?? hpMax) / hpMax));
+  const top = (boosting ? MAX * 1.45 : MAX) * health;
 
-  car.speed += (throttle > 0 ? ACCEL * throttle : BRAKE * throttle) * dt;
+  car.speed += (throttle > 0 ? ACCEL * throttle * (boosting ? 2 : 1) : BRAKE * throttle) * dt;
   car.speed *= 1 - DRAG * dt;
-  car.speed = Math.max(REVERSE_MAX, Math.min(MAX, car.speed));
+  car.speed = Math.max(REVERSE_MAX, Math.min(top, car.speed));
   car.angle += steer * TURN * dt * (car.speed / MAX) * Math.sign(car.speed);
   car.x += Math.cos(car.angle) * car.speed * dt;
   car.y += Math.sin(car.angle) * car.speed * dt;

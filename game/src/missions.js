@@ -1,60 +1,118 @@
-// missions.js — sistem misi berantai: DELIVERY, CHASE, TIMED
+// missions.js — 8 misi berantai dengan cerita singkat: kurir, kejar, eksekusi, lindungi, curi, balapan, gelombang polisi, finale
 // SUNNY CITY — authored pass 2026-11-19 (recording 03)
+import { addHeat } from './police.js';
+
 const GAP_SECONDS = 3;
-const DELIVERY = { min: 400, max: 700, reach: 40, reward: 250 };
-const CHASE = { spawn: 300, speed: 170, reach: 40, hold: 2, reward: 400, timeout: 120 };
-const TIMED = { count: 3, seconds: 60, reach: 30, reward: 300, min: 150, max: 450, spacing: 100 };
+const REACH = 40;
 
 export const MISSION_LIST = [
-  { id: 'delivery', title: 'ANTAR PAKET' },
-  { id: 'chase', title: 'KEJAR TARGET' },
-  { id: 'timed', title: 'KUMPUL PAKET' },
+  {
+    id: 'delivery', title: 'KURIR PAKET', who: 'Mama Rosa', reward: 300, limit: 150,
+    intro: 'Ambil paket di titik kuning, antar ke klien sebelum waktu habis.',
+    win: 'Paketnya utuh. Kamu bisa dipercaya.', lose: 'Klien kabur. Paketnya basi.',
+  },
+  {
+    id: 'chase', title: 'KEJAR MOBIL', who: 'Rico', reward: 450, limit: 120,
+    intro: 'Mobil pink itu bawa uangku. Susul dan tempel sampai berhenti!', win: 'Dia menyerah. Uangnya kembali.', lose: 'Dia lolos...',
+  },
+  {
+    id: 'execute', title: 'EKSEKUSI TARGET', who: 'Don Vega', reward: 500, limit: 120,
+    intro: 'Pengkhianat itu parkir di dekat sini. Hancurkan mobilnya.', win: 'Satu masalah beres.', lose: 'Target pergi. Don Vega kecewa.',
+  },
+  {
+    id: 'protect', title: 'LINDUNGI SEKUTU', who: 'Lena', reward: 600, limit: 60,
+    intro: 'Aku dikejar geng! Jaga aku selama 60 detik, tembak pengejarnya.', win: 'Kita aman. Makasih!', lose: 'Lena tertangkap...',
+  },
+  {
+    id: 'steal', title: 'CURI DI GUDANG', who: 'Tikus', reward: 700, limit: 150,
+    intro: 'Ada kargo di gudang. Ambil, polisi pasti datang. Bawa ke tempat aman.', win: 'Bersih! Kargo aman.', lose: 'Kargo hilang, kamu ketahuan.',
+  },
+  {
+    id: 'race', title: 'BALAPAN CHECKPOINT', who: 'Turbo', reward: 600, limit: 70,
+    intro: 'Lewati 5 checkpoint sebelum waktu habis. Pakai mobil!', win: 'Cepat juga kamu.', lose: 'Terlalu lambat.',
+  },
+  {
+    id: 'wave', title: 'TAHAN POLISI', who: 'Kapten Hale', reward: 800, limit: 45,
+    intro: 'Polisi mengepung markas! Bertahan hidup 45 detik.', win: 'Mereka mundur. Kamu hebat.', lose: 'Markas jatuh.',
+  },
+  {
+    id: 'finale', title: 'FINALE: BOS KOTA', who: 'Don Vega', reward: 1500, limit: 200,
+    intro: 'Ini akhirnya. Temui aku di titik kuning, lalu hancurkan mobil bos.', win: 'Kota ini milikmu, Sunny City.', lose: 'Bos lolos. Coba lagi.',
+  },
 ];
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-function lanePointsBetween(world, from, min, max) {
-  return world.lanePoints.filter((p) => { const d = dist(p, from); return d >= min && d <= max; });
+function ptsBetween(world, from, min, max) {
+  let pts = world.lanePoints.filter((p) => { const d = dist(p, from); return d >= min && d <= max; });
+  if (!pts.length) pts = world.lanePoints.filter((p) => dist(p, from) >= min * 0.5);
+  return pts.length ? pts : world.lanePoints;
 }
 
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function spot(world, from, min, max) {
+  const p = pick(ptsBetween(world, from, min, max));
+  return { x: p.x, y: p.y };
+}
+
+function laneAngle(p, dir) {
+  return p.horizontal ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+}
+
+function laneCar(world, p, dir, driver, color, speed) {
+  const car = { x: p.x, y: p.y, angle: laneAngle(p, dir), speed, color, driver, horizontal: p.horizontal, dir, hp: 100 };
+  world.cars.push(car);
+  return car;
+}
+
+function driveLane(world, c, speed, dt) {
+  const pos = c.horizontal ? 'x' : 'y';
+  if (c[pos] > world.width - 30) c.dir = -1; else if (c[pos] < 30) c.dir = 1;
+  c.angle = laneAngle(c, c.dir);
+  c.speed = speed;
+  c.x += Math.cos(c.angle) * speed * dt;
+  c.y += Math.sin(c.angle) * speed * dt;
+}
 
 export function createMissions(world, ui, audio) {
-  let cursor = 0;
+  let cursor = (ui.missionsDone || 0) % MISSION_LIST.length;
   let gap = 0;
+  const say = (who, text) => ui.toast(who + ': ' + text, 4.5);
+
   const m = {
     list: MISSION_LIST,
     active: null,
     done: 0,
     markers: [],
     target: null,
+    focus: { x: 0, y: 0 },
 
     next() {
-      const def = MISSION_LIST[cursor % MISSION_LIST.length];
-      cursor++;
-      m.start(def.id);
+      m.start(MISSION_LIST[cursor % MISSION_LIST.length].id);
     },
 
     start(id) {
       cleanup();
-      const def = MISSION_LIST.find((d) => d.id === id);
-      if (!def) throw new Error('misi tidak dikenal: ' + id);
-      m.active = { id, title: def.title, pending: true };
+      const idx = MISSION_LIST.findIndex((d) => d.id === id);
+      if (idx < 0) throw new Error('misi tidak dikenal: ' + id);
+      const def = MISSION_LIST[idx];
+      m.active = { id, def, title: def.title, pending: true, t: 0, cars: [], stage: 0 };
       gap = 0;
     },
 
     update(dt, player, w = world) {
       const focus = player.car || player;
+      m.focus = focus;
       if (!m.active) {
         if (gap > 0) { gap -= dt; if (gap <= 0) m.next(); }
         return;
       }
       const a = m.active;
-      if (a.pending) { init(a, focus, w); a.pending = false; }
-      if (a.id === 'delivery') updateDelivery(a, focus);
-      else if (a.id === 'chase') updateChase(a, focus, dt);
-      else updateTimed(a, focus, dt);
-      refreshMarkers();
+      if (a.pending) { a.pending = false; init(a, focus, w); say(a.def.who, a.def.intro); }
+      a.t += dt;
+      HANDLERS[a.id].update(a, focus, dt);
+      if (m.active === a && !HANDLERS[a.id].noLimit && a.t > a.def.limit) { fail(); return; }
+      if (m.active === a) refreshMarkers();
     },
 
     abort() { if (m.active) fail(); },
@@ -63,103 +121,192 @@ export function createMissions(world, ui, audio) {
       const a = m.active;
       if (!a) return gap > 0 ? 'MISI BERIKUTNYA...' : '';
       if (a.pending) return a.title;
-      const f = m.focus;
-      if (a.id === 'delivery') return `${a.title}: ${Math.round(dist(f, a.dest))}m`;
-      if (a.id === 'chase') {
-        const hold = a.hold > 0 ? ` (${a.hold.toFixed(1)}/${CHASE.hold}s)` : '';
-        return `${a.title}: ${Math.round(dist(f, a.car))}m${hold}`;
-      }
-      return `${a.title}: ${a.packages.length ? TIMED.count - a.packages.length : TIMED.count}/${TIMED.count} — ${Math.ceil(a.timeLeft)}s`;
+      const h = HANDLERS[a.id];
+      const left = h.noLimit ? '' : ` — ${Math.max(0, Math.ceil(a.def.limit - a.t))}s`;
+      return `${a.title}: ${h.text(a)}${left}`;
     },
-    focus: { x: 0, y: 0 },
   };
 
-  function init(a, focus, w) {
-    m.focus = focus;
-    if (a.id === 'delivery') {
-      a.dest = pick(lanePointsBetween(w, focus, DELIVERY.min, DELIVERY.max));
-    } else if (a.id === 'chase') {
-      let pts = lanePointsBetween(w, focus, CHASE.spawn - 40, CHASE.spawn + 40);
-      if (!pts.length) pts = lanePointsBetween(w, focus, CHASE.spawn - 120, CHASE.spawn + 120);
-      const p = pick(pts);
-      const dir = (p.horizontal ? p.x - focus.x : p.y - focus.y) >= 0 ? 1 : -1;
-      const angle = p.horizontal ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-      const car = { x: p.x, y: p.y, angle, speed: CHASE.speed, color: '#ff2fb3', driver: 'target', horizontal: p.horizontal, dir };
-      w.cars.push(car);
-      a.car = car; a.hold = 0; a.age = 0;
-    } else {
-      const pts = lanePointsBetween(w, focus, TIMED.min, TIMED.max);
-      a.packages = [];
-      for (let tries = 0; tries < 200 && a.packages.length < TIMED.count; tries++) {
-        const p = pick(pts);
-        if (p && a.packages.every((q) => dist(p, q) > TIMED.spacing)) a.packages.push({ x: p.x, y: p.y });
+  const HANDLERS = {
+    delivery: {
+      update(a, f) {
+        if (dist(f, a.dest) >= REACH) return;
+        if (a.stage === 0) {
+          a.stage = 1; a.dest = spot(world, a.dest, 400, 700);
+          ui.toast('PAKET DIAMBIL'); say(a.def.who, 'Bagus, sekarang antar ke klien!');
+        } else finish();
+      },
+      text: (a) => `${a.stage ? 'ANTAR' : 'AMBIL'} ${Math.round(dist(m.focus, a.dest))}m`,
+      markers: (a) => [{ x: a.dest.x, y: a.dest.y, scale: 1 }],
+      target: (a) => a.dest,
+    },
+    chase: {
+      update(a, f, dt) {
+        driveLane(world, a.car, 170, dt);
+        if (dist(f, a.car) < REACH) a.hold += dt; else a.hold = 0;
+        if (a.hold >= 2) finish();
+      },
+      text: (a) => `${Math.round(dist(m.focus, a.car))}m${a.hold > 0 ? ` (${a.hold.toFixed(1)}/2s)` : ''}`,
+      markers: (a) => [{ x: a.car.x, y: a.car.y, scale: 0.6 }],
+      target: (a) => a.car,
+    },
+    execute: {
+      update(a) {
+        if (!world.cars.includes(a.car)) finish();
+      },
+      text: (a) => `HANCURKAN MOBIL ${Math.round(dist(m.focus, a.car))}m`,
+      markers: (a) => [{ x: a.car.x, y: a.car.y, scale: 0.6 }],
+      target: (a) => a.car,
+    },
+    protect: {
+      noLimit: true,
+      update(a, f, dt) {
+        const ally = a.car;
+        if (ally.hp <= 0) { fail(); return; }
+        driveLane(world, ally, 70, dt);
+        a.thugs = a.thugs.filter((th) => world.cars.includes(th));
+        for (const th of a.thugs) {
+          driveLane(world, th, 120, dt);
+          if (dist(th, ally) < 45) ally.hp -= 10 * dt;
+        }
+        a.far = dist(f, ally) > 350 ? (a.far || 0) + dt : 0;
+        if (a.far > 8) { fail(); return; }
+        if (a.t >= a.def.limit) finish();
+      },
+      text: (a) => `LENA ${Math.max(0, Math.round(a.car.hp))}% — PENGEJAR ${a.thugs.length} — ${Math.max(0, Math.ceil(a.def.limit - a.t))}s${dist(m.focus, a.car) > 200 ? ' — DEKATI!' : ''}`,
+      markers: (a) => [{ x: a.car.x, y: a.car.y, scale: 0.6 }],
+      target: (a) => a.car,
+    },
+    steal: {
+      update(a, f) {
+        if (dist(f, a.dest) >= REACH) return;
+        if (a.stage === 0) {
+          a.stage = 1; a.dest = spot(world, a.dest, 450, 750);
+          addHeat(world, 150, 'steal');
+          ui.toast('KARGO DIAMBIL — POLISI DATANG'); say('Tikus', 'Alarm menyala! Kabur ke titik aman!');
+        } else finish();
+      },
+      text: (a) => `${a.stage ? 'KABUR' : 'GUDANG'} ${Math.round(dist(m.focus, a.dest))}m`,
+      markers: (a) => [{ x: a.dest.x, y: a.dest.y, scale: 1 }],
+      target: (a) => a.dest,
+    },
+    race: {
+      update(a, f) {
+        if (dist(f, a.points[a.stage]) >= 35) return;
+        a.stage++;
+        if (a.stage >= a.points.length) finish();
+        else ui.toast(`CHECKPOINT ${a.stage}/${a.points.length}`);
+      },
+      text: (a) => `CP ${a.stage + 1}/${a.points.length}`,
+      markers: (a) => a.points.slice(a.stage, a.stage + 2).map((p, i) => ({ x: p.x, y: p.y, scale: i ? 0.5 : 0.9 })),
+      target: (a) => a.points[a.stage],
+    },
+    wave: {
+      noLimit: true,
+      update(a, f, dt) {
+        a.pulse -= dt;
+        if (a.pulse <= 0) { a.pulse = 1; addHeat(world, world.police.stars < 3 ? 100 : 8, 'wave'); }
+        const w = Math.floor(a.t / 15) + 1;
+        if (w > a.wave) { a.wave = w; ui.toast('GELOMBANG ' + w); }
+        if (a.t >= a.def.limit) finish();
+      },
+      text: (a) => `BERTAHAN ${Math.max(0, Math.ceil(a.def.limit - a.t))}s — GELOMBANG ${a.wave}`,
+      markers: () => [],
+      target: () => null,
+    },
+    finale: {
+      update(a, f) {
+        if (a.stage === 0) {
+          if (dist(f, a.dest) < REACH) {
+            a.stage = 1;
+            const p = spot(world, f, 250, 450);
+            a.car = laneCar(world, p, 1, 'mark', '#7a1fff', 0);
+            a.car.horizontal = true;
+            a.car.hp = 300; a.cars.push(a.car);
+            addHeat(world, 200, 'finale');
+            say('Don Vega', 'Kamu berani datang. Habisi mobilku kalau bisa!');
+          }
+        } else if (!world.cars.includes(a.car)) finish();
+      },
+      text: (a) => a.stage ? `HANCURKAN MOBIL BOS ${Math.round(dist(m.focus, a.car))}m (${Math.max(0, Math.round(a.car.hp))} HP)` : `TEMUI BOS ${Math.round(dist(m.focus, a.dest))}m`,
+      markers: (a) => a.stage ? [{ x: a.car.x, y: a.car.y, scale: 0.7 }] : [{ x: a.dest.x, y: a.dest.y, scale: 1 }],
+      target: (a) => (a.stage ? a.car : a.dest),
+    },
+  };
+
+  function init(a, f, w) {
+    m.focus = f;
+    if (a.id === 'delivery') a.dest = spot(w, f, 150, 350);
+    else if (a.id === 'chase') {
+      const p = pick(ptsBetween(w, f, 260, 340));
+      const dir = (p.horizontal ? p.x - f.x : p.y - f.y) >= 0 ? 1 : -1;
+      a.car = laneCar(w, p, dir, 'target', '#ff2fb3', 170);
+      a.cars.push(a.car); a.hold = 0;
+    } else if (a.id === 'execute') {
+      const p = pick(ptsBetween(w, f, 250, 450));
+      a.car = laneCar(w, p, 1, 'mark', '#7a1fff', 0);
+      a.car.hp = 150; a.cars.push(a.car);
+    } else if (a.id === 'protect') {
+      const p = pick(ptsBetween(w, f, 60, 160));
+      const dir = p.horizontal ? (p.x > f.x ? 1 : -1) : (p.y > f.y ? 1 : -1);
+      a.car = laneCar(w, p, dir, 'ally', '#37d6a0', 70);
+      a.cars.push(a.car);
+      a.thugs = [];
+      for (let i = 0; i < 2; i++) {
+        const d = 150 + i * 70;
+        const back = {
+          x: Math.max(40, Math.min(w.width - 40, a.car.x - Math.cos(a.car.angle) * d)),
+          y: Math.max(40, Math.min(w.height - 40, a.car.y - Math.sin(a.car.angle) * d)),
+          horizontal: p.horizontal,
+        };
+        const th = laneCar(w, back, dir, 'thug', '#303030', 120);
+        a.thugs.push(th); a.cars.push(th);
       }
-      a.timeLeft = TIMED.seconds;
-    }
+    } else if (a.id === 'steal') a.dest = spot(w, f, 300, 550);
+    else if (a.id === 'race') {
+      a.points = [];
+      let from = f;
+      for (let i = 0; i < 5; i++) { const p = spot(w, from, 120, 260); a.points.push(p); from = p; }
+    } else if (a.id === 'wave') { a.pulse = 0; a.wave = 0; }
+    else if (a.id === 'finale') a.dest = spot(w, f, 250, 450);
   }
 
   function cleanup() {
     const a = m.active;
-    if (a && a.car) { const i = world.cars.indexOf(a.car); if (i >= 0) world.cars.splice(i, 1); }
+    if (a) for (const c of a.cars) { const i = world.cars.indexOf(c); if (i >= 0) world.cars.splice(i, 1); }
     m.active = null;
     m.markers = [];
     m.target = null;
   }
 
-  function finish(reward) {
+  function finish() {
+    const a = m.active, reward = a.def.reward;
     ui.addMoney(reward);
     ui.toast(`MISI SELESAI +$${reward}`);
+    say(a.def.who, a.def.win);
     ui.missionsDone++;
     m.done++;
     audio.complete();
+    cursor = (MISSION_LIST.indexOf(a.def) + 1) % MISSION_LIST.length;
     cleanup();
+    ui.save();
     gap = GAP_SECONDS;
   }
 
   function fail() {
+    const a = m.active;
     ui.toast('MISI GAGAL');
+    say(a.def.who, a.def.lose);
     cleanup();
     gap = GAP_SECONDS;
   }
 
-  function updateDelivery(a, f) {
-    m.focus = f;
-    if (dist(f, a.dest) < DELIVERY.reach) finish(DELIVERY.reward);
-  }
-
-  function updateChase(a, f, dt) {
-    m.focus = f;
-    const c = a.car;
-    a.age += dt;
-    const limit = world.width - 30;
-    const pos = c.horizontal ? 'x' : 'y';
-    if (c[pos] > limit) c.dir = -1; else if (c[pos] < 30) c.dir = 1;
-    c.angle = c.horizontal ? (c.dir > 0 ? 0 : Math.PI) : (c.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-    c.speed = CHASE.speed;
-    c.x += Math.cos(c.angle) * c.speed * dt;
-    c.y += Math.sin(c.angle) * c.speed * dt;
-    if (dist(f, c) < CHASE.reach) a.hold += dt; else a.hold = 0;
-    if (a.hold >= CHASE.hold) finish(CHASE.reward);
-    else if (a.age > CHASE.timeout) fail();
-  }
-
-  function updateTimed(a, f, dt) {
-    m.focus = f;
-    a.timeLeft -= dt;
-    a.packages = a.packages.filter((p) => dist(f, p) >= TIMED.reach);
-    if (!a.packages.length) { finish(TIMED.reward); return; }
-    if (a.timeLeft <= 0) fail();
-  }
-
   function refreshMarkers() {
     const a = m.active;
-    if (!a) { m.markers = []; m.target = null; return; }
-    if (a.id === 'delivery') { m.markers = [{ x: a.dest.x, y: a.dest.y, scale: 1 }]; m.target = a.dest; }
-    else if (a.id === 'chase') { m.markers = [{ x: a.car.x, y: a.car.y, scale: 0.6 }]; m.target = a.car; }
-    else {
-      m.markers = a.packages.map((p) => ({ x: p.x, y: p.y, scale: 0.4 }));
-      m.target = a.packages.reduce((best, p) => (!best || dist(m.focus, p) < dist(m.focus, best) ? p : best), null);
-    }
+    if (!a || a.pending) { m.markers = []; m.target = null; return; }
+    const h = HANDLERS[a.id];
+    m.markers = h.markers(a);
+    m.target = h.target(a);
   }
 
   return m;

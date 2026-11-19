@@ -6,10 +6,7 @@ import { hasLineOfSight, addHeat } from './police.js';
 import { alarmPeds } from './peds.js';
 
 export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48;
-const WEAPONS = {
-  pistol: { damage: 25, cooldown: 0.25, spread: 0 },
-  smg: { damage: 12, cooldown: 0.08, spread: 0.05 },
-};
+import { WEAPONS, WEAPON_ORDER, createAmmo, refill, createPickups, updatePickups } from './weapons.js';
 const RANGE = 600, PED_RADIUS = 14, CAR_HALF_L = 28, CAR_HALF_W = 11, DRIVEBY_SPREAD = 0.10;
 const CAR_HP = 100, PED_HP = 50;
 const MAX_HEALTH = 100, REGEN_DELAY = 6, REGEN_RATE = 2;
@@ -79,6 +76,9 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     mouseDown: false,
     aim: { x: player.x + 100, y: player.y },
     weapon: 'pistol',
+    ammo: createAmmo(),
+    pickups: createPickups(),
+    wheelOpen: false,
     cool: 0,
     sinceHit: REGEN_DELAY,
     bustProgress: 0,
@@ -154,13 +154,28 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       c.cool = Math.max(0, c.cool - dt);
       tickFx(dt);
       updateAim();
-      if (keys.has('1')) c.weapon = 'pistol';
-      else if (keys.has('2')) c.weapon = 'smg';
+      WEAPON_ORDER.forEach((id, i) => { if (keys.has(String(i + 1)) && !prevKeys.has(String(i + 1))) c.weapon = id; });
+      const q = keys.has('q') && !c.dead;
+      if (q) {
+        const dx = c.mouse.x - 480, dy = c.mouse.y - 270;
+        if (Math.hypot(dx, dy) > 25) {
+          const a = Math.atan2(dy, dx);
+          c.wheelSel = Math.round((a + Math.PI / 2) / (Math.PI / 2) + 8) % 4;
+        }
+      } else if (c.wheelOpen && c.wheelSel != null) { c.weapon = WEAPON_ORDER[c.wheelSel]; c.wheelSel = null; }
+      c.wheelOpen = q;
+      prevKeys = new Set(keys);
+      const wd = WEAPONS[c.weapon];
       ui.weapon = c.weapon;
+      ui.weaponName = wd.name;
+      ui.weaponIndex = WEAPON_ORDER.indexOf(c.weapon) + 1;
+      ui.ammo = c.ammo[c.weapon];
+      ui.wheel = q ? { sel: c.wheelSel, ammo: c.ammo } : null;
       ui.hit = c.hit;
       if (c.dead) { tickDead(rawDt); return; }
+      updateAmmoPickups(dt);
 
-      if ((c.mouseDown || keys.has('f')) && c.cool <= 0) fire();
+      if ((c.mouseDown || keys.has('f')) && !q && c.cool <= 0) fire();
       c.sinceHit += dt;
       if (c.sinceHit >= REGEN_DELAY && player.health < MAX_HEALTH) player.health = Math.min(MAX_HEALTH, player.health + REGEN_RATE * dt);
       updateCops(dt);
@@ -168,6 +183,17 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       if (!c.dead && player.health <= 0) die('WASTED');
     },
   };
+
+  let prevKeys = new Set();
+  function updateAmmoPickups(dt) {
+    const focus = player.car || player;
+    updatePickups(c.pickups, world, focus, dt, () => { refill(c.ammo); ui.toast('AMMO +'); });
+    ui.pickups = c.pickups.list.map((p) => {
+      proj.set(p.x - WORLD_W / 2, 10, p.y - WORLD_H / 2).project(gfx.camera);
+      if (proj.z >= 1 || Math.abs(proj.x) > 1.1 || Math.abs(proj.y) > 1.1) return null;
+      return { x: (proj.x + 1) / 2 * 960, y: (1 - proj.y) / 2 * 540, d: Math.hypot(p.x - focus.x, p.y - focus.y) };
+    }).filter(Boolean);
+  }
 
   function updateAim() {
     const camera = gfx.camera;
@@ -228,6 +254,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     if (hit.kind === 'car') {
       if (target === player.car) return;
       const cop = target.driver === 'cop', mission = target.driver === 'target';
+      if (target.driver === 'ally') { target.hp = (target.hp ?? CAR_HP) - dmg; markHit(hit.x, hit.y, false); return; }
       target.hp = (target.hp ?? CAR_HP) - dmg;
       let kill = false;
       if (target.hp <= 0) {
@@ -250,21 +277,33 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
 
   function fire() {
     const w = WEAPONS[c.weapon];
+    if (c.ammo[c.weapon] <= 0) {
+      c.cool = 0.35;
+      if (!c.dryT || c.dryT < performance.now() - 1500) { ui.toast(w.name + ' KOSONG'); c.dryT = performance.now(); }
+      return;
+    }
+    c.ammo[c.weapon]--;
     const car = player.car, src = car || player;
-    let angle, spread;
-    if (car) { angle = car.angle; spread = DRIVEBY_SPREAD; }
-    else { angle = Math.atan2(c.aim.y - src.y, c.aim.x - src.x); spread = w.spread; player.facing = angle; }
-    angle += (Math.random() * 2 - 1) * spread;
+    let base, spread;
+    if (car) { base = car.angle; spread = Math.max(DRIVEBY_SPREAD, w.spread); }
+    else { base = Math.atan2(c.aim.y - src.y, c.aim.x - src.x); spread = w.spread; player.facing = base; }
     c.cool = w.cooldown;
-
-    const hit = c.hitscan(src, angle, { exclude: car });
     const reach = car ? 30 : 12;
-    const mx = src.x + Math.cos(angle) * reach, my = src.y + Math.sin(angle) * reach;
-    addTracer(mx, my, 14, hit.x, hit.y, 12, 1.4, PLAYER_COLOR, 0.1);
-    addFlash(mx, my, angle, 16, PLAYER_COLOR, 0.06);
-    if (hit.kind !== 'none') addSparks(hit.x, hit.y, hit.kind === 'wall' ? 3 : 2);
+    const hits = new Map();
+    for (let i = 0; i < w.pellets; i++) {
+      const angle = base + (Math.random() * 2 - 1) * spread;
+      const hit = c.hitscan(src, angle, { exclude: car, range: w.range });
+      const mx = src.x + Math.cos(angle) * reach, my = src.y + Math.sin(angle) * reach;
+      addTracer(mx, my, 14, hit.x, hit.y, 12, 1.4, PLAYER_COLOR, 0.1);
+      if (i === 0) addFlash(mx, my, angle, w.pellets > 1 ? 24 : 16, PLAYER_COLOR, 0.06);
+      if (hit.kind !== 'none' && (i < 2 || w.pellets === 1)) addSparks(hit.x, hit.y, hit.kind === 'wall' ? 3 : 2);
+      if (hit.target) {
+        const e = hits.get(hit.target);
+        if (e) e.dmg += w.damage; else hits.set(hit.target, { hit, dmg: w.damage });
+      }
+    }
     alarmPeds(peds, src.x, src.y, 150);
-    damage(hit, w.damage);
+    for (const { hit, dmg } of hits.values()) damage(hit, dmg);
   }
 
   function hurtPlayer(dmg) {

@@ -12,6 +12,8 @@ import { createMissions } from './missions.js';
 import { createCombat } from './combat.js';
 import { createTouch } from './touch.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
+import { createShot } from './shots.js';
+import { createExtras } from './extras.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -36,12 +38,15 @@ const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
+const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
+const extras = createExtras({ world, player, ui, audio, gfx });
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
 function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
 const touchTarget = (e) => !!(e.target && e.target.closest && e.target.closest('#touch'));
 addEventListener('pointerdown', (e) => {
+  if (ui.state === 'PLAYING' && extras.click(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight)) return;
   if (ui.click() === 'start') startGame();
   else if (e.button === 0 && ui.state === 'PLAYING' && !touchTarget(e)) combat.mouseDown = true;
 });
@@ -50,6 +55,7 @@ addEventListener('pointermove', (e) => { if (!touchTarget(e)) combat.setMouse(e.
 addEventListener('beforeunload', () => ui.save());
 
 function enterExit() {
+  if (extras.garage.open) return;
   const wasOnFoot = !player.car;
   toggleVehicle(world, player);
   if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
@@ -82,9 +88,17 @@ if (touch.isTouch) {
   addEventListener('pointerdown', () => { if (ui.state === 'PLAYING' && !ui.touchHinted) { ui.touchHinted = true; ui.toast('Joystick kiri: gerak · E: masuk mobil · F: tembak'); } }, { once: false });
 }
 
+function setRadioKey() {
+  const on = !!player.car && ui.state === 'PLAYING';
+  audio.setRadio(on);
+}
 addEventListener('keydown', (e) => {
-  pressKey(e);
   const k = e.key.toLowerCase();
+  if (ui.state === 'PLAYING' && extras.handleKey(k, e.repeat)) { e.preventDefault(); return; }
+  if (k === 'r' && !e.repeat && ui.state === 'PLAYING' && player.car) {
+    ui.station = audio.nextStation(); ui.stationT = 2.5; setRadioKey();
+  }
+  pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
   if (k === 'e' && !e.repeat) enterExit();
   keys.add(k);
@@ -106,6 +120,7 @@ function frame(now) {
   const dead = ui.state === 'DEAD';
   if (dead) dt *= 0.3;
   const input = dead ? new Set() : keys;
+  if (shot) shot.tick(dt);
   const car = player.car;
   crashCooldown = Math.max(0, crashCooldown - dt);
   if (car) {
@@ -113,12 +128,15 @@ function frame(now) {
     updateDrivenCar(car, input, world, dt);
     if (speedBefore > CRASH_MIN_SPEED && speedBefore - Math.abs(car.speed) > CRASH_SPEED_DROP && crashCooldown === 0) {
       addHeat(world, 25, 'crash');
+      car.hp = Math.max(10, (car.hp ?? 100) - (speedBefore - Math.abs(car.speed)) * 0.2);
       audio.crash((speedBefore - Math.abs(car.speed)) / 200);
       alarmPeds(peds, car.x, car.y, 300);
       crashCooldown = CRASH_COOLDOWN;
     }
   }
   else updatePlayer(player, input, world, dt);
+  extras.update(dt);
+  setRadioKey();
   updateTraffic(world, dt);
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
@@ -129,6 +147,7 @@ function frame(now) {
   missions.update(dt, player, world);
   combat.update(dt, keys, rawDt);
   updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
+  if (shot) shot.camera(gfx.camera);
   renderFrame(gfx, world, player, fps, police, peds, missions, combat);
   const focus = car || player;
   let nearest = Infinity;
