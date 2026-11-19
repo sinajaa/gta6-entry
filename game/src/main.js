@@ -2,7 +2,7 @@
 // Alur utama game dirangkai dan dirapikan langsung oleh penulis entry.
 import { createWorld, T, tileAt } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
-import { updateCamera3D } from './camera.js';
+import { updateCamera3D, createMenuCamera, updateMenuCamera, beginMenuBlend, blendCameraStart, blendCameraEnd } from './camera.js';
 import { initRenderer, renderFrame } from './render3d.js';
 import { createPolice, addHeat, updateWanted, updatePolice } from './police.js';
 import { createUI } from './ui.js';
@@ -45,6 +45,25 @@ const interiors = createInteriors({ world, player, ui, gfx, combat });
 gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
+
+const MENU_HOUR = 17.6;
+const menuCam = new URLSearchParams(location.search).has('shot') ? null : createMenuCamera(gfx.camera);
+const menuHour = { hour: gfx.hour, frozen: gfx.frozenHour };
+if (menuCam) {
+  gfx.frozenHour = true; gfx.hour = MENU_HOUR;
+  const MENU_LIGHT = { exp: 4.2, sun: 2.4, hemi: 5 };
+  const prevBefore = gfx.beforeDraw;
+  let lifted = false;
+  gfx.beforeDraw = () => {
+    if (prevBefore) prevBefore();
+    const b = gfx.base, w = menuCam.phase === 'menu' ? 1 : menuCam.phase === 'blend' ? 1 - menuCam.s : 0;
+    if (!b || (w === 0 && !lifted)) return;
+    gfx.renderer.toneMappingExposure = b.exp * (1 + (MENU_LIGHT.exp - 1) * w);
+    gfx.sun.intensity = b.sun * (1 + (MENU_LIGHT.sun - 1) * w);
+    gfx.hemi.intensity = b.hemi * (1 + (MENU_LIGHT.hemi - 1) * w);
+    lifted = w > 0;
+  };
+}
 
 function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
 const touchTarget = (e) => !!(e.target && e.target.closest && e.target.closest('#touch'));
@@ -120,6 +139,16 @@ function frame(now) {
   if (fpsTimer >= 0.5) { fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0; }
   ui.update(rawDt);
   canvas.style.filter = ui.state === 'DEAD' ? 'grayscale(0.85) contrast(1.1)' : '';
+  if (menuCam && menuCam.phase === 'menu' && ui.state !== 'MENU') beginMenuBlend(menuCam, gfx.camera);
+  if (menuCam && ui.state === 'MENU') {
+    updateTraffic(world, rawDt);
+    updatePeds(world, player, peds, rawDt);
+    updateMenuCamera(menuCam, gfx.camera, rawDt);
+    renderFrame(gfx, world, player, fps, police, peds, undefined, combat);
+    ui.update(0);
+    requestAnimationFrame(frame);
+    return;
+  }
   if (ui.state !== 'PLAYING' && ui.state !== 'DEAD') { requestAnimationFrame(frame); return; }
   const dead = ui.state === 'DEAD';
   if (dead) dt *= 0.3;
@@ -153,7 +182,14 @@ function frame(now) {
   combat.update(dt, keys, rawDt);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
+  const blending = menuCam && menuCam.phase === 'blend';
+  if (blending) {
+    blendCameraStart(menuCam, gfx.camera, rawDt);
+    gfx.hour = MENU_HOUR + (menuHour.hour - MENU_HOUR) * menuCam.s;
+    if (menuCam.phase === 'done') { gfx.hour = menuHour.hour; gfx.frozenHour = menuHour.frozen; gfx.lastClock = performance.now(); }
+  }
   renderFrame(gfx, world, player, fps, police, peds, missions, combat);
+  if (blending) blendCameraEnd(menuCam, gfx.camera);
   const focus = car || player;
   let nearest = Infinity;
   for (const cop of police.cars) nearest = Math.min(nearest, Math.hypot(cop.x - focus.x, cop.y - focus.y));

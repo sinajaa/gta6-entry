@@ -11,7 +11,9 @@ const HX = WORLD_W / 2, HY = WORLD_H / 2;
 const COP_COLOR = '#2456c4';
 const HALF_PI = Math.PI / 2;
 
-if (NAME) {
+const COP_QUIET_SECONDS = 0.5;
+
+function seedRandom() {
   let s = SEED;
   Math.random = () => {
     s = (s + 0x6d2b79f5) | 0;
@@ -20,6 +22,8 @@ if (NAME) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+if (NAME) seedRandom();
 
 function put(car, x, y, angle, speed) {
   car.x = x; car.y = y; car.angle = angle; car.speed = speed;
@@ -113,7 +117,7 @@ const SHOTS = {
     tick(c) {
       const car = c.player.car;
       c.keys.add('w');
-      car.x = 780; car.y = 1328; car.angle = 0;
+      put(car, 780, 1328, 0, 230);
       c.player.x = car.x; c.player.y = car.y;
       put(c.cops[0], 690, 1328, 0, 240); put(c.cops[1], 640, 1296, 0, 240);
     },
@@ -201,10 +205,31 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
     if (L.hemiGnd) gfx.hemi.groundColor.set(L.hemiGnd);
   };
   if (def.light && def.light.sunDir) gfx.sunDirOverride = new THREE.Vector3(...def.light.sunDir);
+  let elapsed = 0;
+  const immortal = () => {
+    player.health = 100;
+    if (player.armor !== undefined) player.armor = 100;
+    combat.bust = 0;
+    combat.vignette = 0; combat.shake = 0;
+    if (combat.dead) { combat.dead = null; ui.dead = null; }
+    if (ui.state !== 'PAUSED') ui.state = 'PLAYING';
+  };
+  const copsQuiet = () => {
+    if (elapsed >= COP_QUIET_SECONDS) return;
+    for (const cop of police.cars) { cop.fire = null; cop.fireCool = COP_QUIET_SECONDS - elapsed; }
+  };
+  const combatUpdate = combat.update;
+  combat.update = (...args) => {
+    immortal();
+    copsQuiet();
+    combatUpdate(...args);
+    immortal();
+  };
   return {
     name: NAME,
     tick(dt) {
-      if (ui.state !== 'PLAYING') return;
+      if (ui.state === 'PAUSED') return;
+      immortal();
       if (!hooked) {
         hooked = true;
         const prev = gfx.beforeDraw;
@@ -214,9 +239,9 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
           if (prev) prev();
         };
       }
-      if (!ready) { ready = true; setHour(gfx, def.hour); def.setup(c); }
+      if (!ready) { ready = true; seedRandom(); setHour(gfx, def.hour); def.setup(c); elapsed = 0; copsQuiet(); }
+      else elapsed += dt;
       if (gfx.hour !== def.hour) gfx.hour = def.hour;
-      if (player.health < 100) player.health = 100;
       if (c.pinWanted) { police.heat = 250; police.stars = 3; }
       if (def.tick) def.tick(c, dt);
     },

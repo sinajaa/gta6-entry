@@ -116,3 +116,44 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
     cam3d.updateProjectionMatrix();
   }
 }
+
+const MENU_CAM = { cx: 1312, cz: 1312, radius: 260, up: 120, fov: 62, lookY: 10, omega: 0.1, blendSec: 0.4 };
+const menuLook = { x: MENU_CAM.cx - WORLD_W_HALF, y: MENU_CAM.lookY, z: MENU_CAM.cz - WORLD_H_HALF };
+
+export function createMenuCamera(cam3d) {
+  const v = cam3d.position;
+  return {
+    phase: 'menu', a: Math.PI * 0.25, t: 0, s: 0,
+    game: { pos: v.clone(), look: cam3d.userData.look.clone(), fov: cam3d.fov },
+    from: { pos: v.clone(), look: v.clone() }, restore: v.clone(), look: v.clone(),
+  };
+}
+
+export function updateMenuCamera(m, cam3d, dt) {
+  m.a += dt * MENU_CAM.omega;
+  cam3d.position.set(menuLook.x + Math.cos(m.a) * MENU_CAM.radius, MENU_CAM.up, menuLook.z + Math.sin(m.a) * MENU_CAM.radius);
+  if (cam3d.fov !== MENU_CAM.fov) { cam3d.fov = MENU_CAM.fov; cam3d.updateProjectionMatrix(); }
+  m.look.set(menuLook.x, menuLook.y, menuLook.z);
+  if (cam3d.userData.ghost) cam3d.userData.ghost.length = 0;
+  cam3d.lookAt(m.look);
+}
+
+export function beginMenuBlend(m, cam3d) {
+  m.from.pos.copy(cam3d.position); m.from.look.copy(m.look);
+  cam3d.position.copy(m.game.pos); cam3d.userData.look.copy(m.game.look);
+  cam3d.fov = m.game.fov; cam3d.updateProjectionMatrix();
+  m.phase = 'blend'; m.t = 0; m.s = 0;
+}
+
+// dipanggil setelah updateCamera3D, sebelum render; blendCameraEnd memulihkan posisi kamera gameplay
+export function blendCameraStart(m, cam3d, dt) {
+  m.t += dt;
+  const x = Math.min(1, m.t / MENU_CAM.blendSec);
+  m.s = x * x * (3 - 2 * x);
+  m.restore.copy(cam3d.position);
+  cam3d.position.lerpVectors(m.from.pos, m.restore, m.s);
+  m.look.lerpVectors(m.from.look, cam3d.userData.look, m.s);
+  cam3d.lookAt(m.look);
+  if (x >= 1) m.phase = 'done';
+}
+export function blendCameraEnd(m, cam3d) { cam3d.position.copy(m.restore); }

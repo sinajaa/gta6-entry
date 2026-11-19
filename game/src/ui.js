@@ -207,8 +207,12 @@ function drawOverlay(ctx, ui) {
   const menu = ui.state === 'MENU';
   ctx.save();
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = menu ? 'rgba(8,8,14,0.82)' : 'rgba(8,8,14,0.65)';
-  ctx.fillRect(0, 0, W, H);
+  if (menu) {
+    ctx.fillStyle = 'rgba(8,8,14,0.4)'; ctx.fillRect(210, 36, W - 420, H - 72);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 6;
+  } else {
+    ctx.fillStyle = 'rgba(8,8,14,0.65)'; ctx.fillRect(0, 0, W, H);
+  }
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
   let y = 120;
