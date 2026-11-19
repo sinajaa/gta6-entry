@@ -55,6 +55,8 @@ same registry in `game/src/interiors.js`:
 | `game/src/render3d.js` | `buildWaterfront` seam (ocean/beach/palms/umbrellas/pier/marina), `buildPalmGeometry`, `buildBoatGeometry`, `flatQuad`, ocean shaders, and `syncOcean` wired into `renderFrame` |
 | `game/src/interiors.js` | fourth enterable interior (diner with counter and stools) added to the existing `KINDS` registry and `furnish` branch |
 
+The player now slows to a swim pace (`SWIM = 70`) when within `WATER_EDGE = 260` of the island edge (see `game/src/player.js`).
+
 No mission scripts, control bindings or world-generation code were changed.
 
 ## Verification

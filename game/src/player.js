@@ -1,10 +1,11 @@
 // player.js — gerak dan kontrol pemain berjalan kaki
 // Kontrol jalan kaki pemain dibuat sendiri dan disetel lewat uji coba.
 const WALK = 150, SPRINT = 260, ACCEL = 1400;
+const SWIM = 70, WATER_EDGE = 260;
 const STAMINA_MAX = 100, STAMINA_DRAIN = 22, STAMINA_REGEN = 30, STAMINA_DELAY = 0.4;
 
 export function createPlayer(x, y) {
-  return { x, y, vx: 0, vy: 0, radius: 8, facing: 0, sprinting: false, stamina: STAMINA_MAX, staminaDelay: 0 };
+  return { x, y, vx: 0, vy: 0, radius: 8, facing: 0, sprinting: false, swimming: false, stamina: STAMINA_MAX, staminaDelay: 0 };
 }
 
 export function updatePlayer(p, keys, world, dt) {
@@ -16,7 +17,10 @@ export function updatePlayer(p, keys, world, dt) {
   p.sprinting = wantSprint;
   if (p.sprinting) { p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN * dt); p.staminaDelay = STAMINA_DELAY; }
   else { p.staminaDelay = Math.max(0, p.staminaDelay - dt); if (p.staminaDelay <= 0) p.stamina = Math.min(STAMINA_MAX, p.stamina + STAMINA_REGEN * dt); }
-  const speed = p.sprinting ? SPRINT : WALK;
+  const edgeD = Math.min(p.x, p.y, world.width - p.x, world.height - p.y);
+  const inWater = edgeD < WATER_EDGE;
+  p.swimming = inWater;
+  const speed = inWater ? SWIM : p.sprinting ? SPRINT : WALK;
   const step = ACCEL * dt;
   p.vx += Math.max(-step, Math.min(step, ix * speed - p.vx));
   p.vy += Math.max(-step, Math.min(step, iy * speed - p.vy));
