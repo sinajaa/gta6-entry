@@ -590,6 +590,7 @@ function renderBloom(gfx) {
 }
 
 const TRACER_N = 32, FLASH_N = 8, SPARK_N = 48;
+const SHELL_N = 40, DEBRIS_N = 48, SMOKE_N = 64, FIREBALL_N = 6;
 const fxTmp = new THREE.Color();
 function buildCombatFx(gfx) {
   const add = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, vertexColors: true, fog: false };
@@ -616,6 +617,26 @@ function buildCombatFx(gfx) {
   sparkMesh.setColorAt(0, fxTmp.set('#ff8a1f'));
   sparkMesh.frustumCulled = false; sparkMesh.count = 0;
 
+  // Shell casings: small bronze boxes that tumble as they fall.
+  const shellMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 3, 1.4), new THREE.MeshBasicMaterial({ toneMapped: false, fog: false, color: 0xc9a25a }), SHELL_N);
+  shellMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  shellMesh.frustumCulled = false; shellMesh.count = 0;
+
+  // Explosion debris: small dark chunks, some glowing.
+  const debrisMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial({ toneMapped: false, fog: false }), DEBRIS_N);
+  debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  debrisMesh.frustumCulled = false; debrisMesh.count = 0;
+
+  // Smoke puffs: additive grey billows that rise and spread.
+  const smokeMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false, fog: false, color: 0x55585e }), SMOKE_N);
+  smokeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  smokeMesh.frustumCulled = false; smokeMesh.count = 0;
+
+  // Fireballs: additive orange glows (the smoke mesh is reused for a couple of large fire puffs).
+  const fireMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }), FIREBALL_N);
+  fireMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  fireMesh.frustumCulled = false; fireMesh.count = 0;
+
   const lights = [];
   if (!gfx.software) {
     for (let i = 0; i < 2; i++) {
@@ -623,8 +644,8 @@ function buildCombatFx(gfx) {
       gfx.scene.add(l); lights.push(l);
     }
   }
-  gfx.scene.add(lines, tracerQuads, flashQuads, sparkMesh);
-  gfx.fx = { lines, tracerQuads, flashQuads, sparkMesh, lights };
+  gfx.scene.add(lines, tracerQuads, flashQuads, sparkMesh, shellMesh, debrisMesh, smokeMesh, fireMesh);
+  gfx.fx = { lines, tracerQuads, flashQuads, sparkMesh, shellMesh, debrisMesh, smokeMesh, fireMesh, lights };
 }
 
 const fxM = new THREE.Matrix4(), fxP = new THREE.Vector3(), fxQ = new THREE.Quaternion(), fxS = new THREE.Vector3(1, 1, 1);
@@ -658,8 +679,8 @@ export function syncCombat(gfx, combat) {
     const a = f.t > 0 ? Math.min(1, f.t / f.max) : 0;
     const [r, g, b] = f.color;
     const s = f.size * 0.5, c = Math.cos(f.angle), n = Math.sin(f.angle);
-    const x = f.x - ox, z = f.y - oz;
-    writeQuad(fg, i, x - c * s * 0.3, 14, z - n * s * 0.3, x + c * s, 14, z + n * s, s * 0.45, r * a, g * a, b * a);
+    const x = f.x - ox, z = f.y - oz, fy = f.z ?? 14;
+    writeQuad(fg, i, x - c * s * 0.3, fy, z - n * s * 0.3, x + c * s, fy, z + n * s, s * 0.45, r * a, g * a, b * a);
   });
   fg.attributes.position.needsUpdate = fg.attributes.color.needsUpdate = true;
 
@@ -676,11 +697,68 @@ export function syncCombat(gfx, combat) {
   fx.sparkMesh.instanceMatrix.needsUpdate = true;
   if (fx.sparkMesh.instanceColor) fx.sparkMesh.instanceColor.needsUpdate = true;
 
+  // Shell casings
+  const shellRot = new THREE.Quaternion(), shellSpin = new THREE.Quaternion(), shellX = new THREE.Vector3(0, 0, 1);
+  let sn = 0;
+  for (const s of combat.shells) {
+    if (s.t <= 0) continue;
+    fxP.set(s.x - ox, s.z, s.y - oz);
+    shellRot.setFromAxisAngle(yAxis, -Math.atan2(s.vy, s.vx));
+    shellRot.multiply(shellSpin.setFromAxisAngle(shellX, s.rot));
+    fxM.compose(fxP, shellRot, fxS.set(1, 1, 1));
+    fx.shellMesh.setMatrixAt(sn, fxM);
+    sn++;
+  }
+  fx.shellMesh.count = sn;
+  fx.shellMesh.instanceMatrix.needsUpdate = true;
+
+  // Explosion debris
+  let dn = 0;
+  for (const d of combat.debris) {
+    if (d.t <= 0) continue;
+    fxP.set(d.x - ox, d.z, d.y - oz);
+    fxM.compose(fxP, fxQ, fxS.setScalar(d.size));
+    fx.debrisMesh.setMatrixAt(dn, fxM);
+    fx.debrisMesh.setColorAt(dn, fxTmp.set(d.hot ? '#ff6a1f' : '#22262b'));
+    dn++;
+  }
+  fx.debrisMesh.count = dn;
+  fx.debrisMesh.instanceMatrix.needsUpdate = true;
+  if (fx.debrisMesh.instanceColor) fx.debrisMesh.instanceColor.needsUpdate = true;
+
+  // Smoke puffs
+  let mn = 0;
+  for (const s of combat.smoke) {
+    if (s.t <= 0) continue;
+    const life = Math.min(1, s.t / s.max);
+    fxP.set(s.x - ox, s.z, s.y - oz);
+    fxM.compose(fxP, fxQ, fxS.setScalar(s.size));
+    fx.smokeMesh.setMatrixAt(mn, fxM);
+    mn++;
+  }
+  fx.smokeMesh.count = mn;
+  fx.smokeMesh.instanceMatrix.needsUpdate = true;
+
+  // Fireballs
+  let fn = 0;
+  for (const f of combat.fireballs) {
+    if (f.t <= 0) continue;
+    const a = Math.min(1, f.t / f.max);
+    fxP.set(f.x - ox, f.z, f.y - oz);
+    fxM.compose(fxP, fxQ, fxS.setScalar(f.size * (0.6 + 0.5 * (1 - a))));
+    fx.fireMesh.setMatrixAt(fn, fxM);
+    fx.fireMesh.setColorAt(fn, fxTmp.setRGB(f.color[0], f.color[1] * a, f.color[2] * a * 0.5));
+    fn++;
+  }
+  fx.fireMesh.count = fn;
+  fx.fireMesh.instanceMatrix.needsUpdate = true;
+  if (fx.fireMesh.instanceColor) fx.fireMesh.instanceColor.needsUpdate = true;
+
   fx.lights.forEach((l, i) => {
     const f = combat.flashes[(combat.flashCursor - 1 - i + FLASH_N * 8) % FLASH_N];
     const on = f && f.t > 0;
     l.intensity = on ? 900 * (f.t / f.max) : 0;
-    if (on) { l.position.set(f.x - ox, 20, f.y - oz); l.color.setRGB(f.color[0], f.color[1], f.color[2]); }
+    if (on) { l.position.set(f.x - ox, (f.z ?? 20) + 4, f.y - oz); l.color.setRGB(f.color[0], f.color[1], f.color[2]); }
   });
 }
 
@@ -1581,6 +1659,7 @@ function syncPoliceLights(gfx, world) {
   if (!moving && signature === gfx.lightSignature && gfx.lightPhase === phase) return;
   gfx.lightSignature = signature;
   gfx.lightPhase = phase;
+  carScale.set(1, 1, 1);
   cops.forEach((car, i) => {
     carQuaternion.setFromAxisAngle(yAxis, -car.angle);
     [-1, 1].forEach((side, s) => {
@@ -1617,6 +1696,7 @@ function syncCarLights(gfx, world) {
   if (gfx.night < 0.15) { mesh.count = 0; return; }
   const count = Math.min(world.cars.length, MAX_CARS);
   const half = CAR_SIZE.length / 2 - 1, y = CAR_SIZE.height / 2 + 1;
+  carScale.set(1, 1, 1);
   world.cars.forEach((car, i) => {
     if (i >= MAX_CARS) return;
     carQuaternion.setFromAxisAngle(yAxis, -car.angle);
@@ -1641,9 +1721,15 @@ export function syncActors(gfx, world, player) {
     if (i >= MAX_CARS) return;
     carPosition.set(car.x - WORLD_W / 2, CAR_SIZE.height / 2 + 2, car.y - WORLD_H / 2);
     carQuaternion.setFromAxisAngle(yAxis, -car.angle);
+    // Visible damage: a battered car squashes slightly and smokes (smoke driven in combat),
+    // with a darker, scorched paint job as its hp drops.
+    const hp = car.hp ?? 100;
+    const dmg = Math.max(0, Math.min(1, 1 - hp / 100));
+    const squash = 1 - dmg * 0.1;
+    carScale.set(squash, 1 - dmg * 0.18, 1 + dmg * 0.08);
     carMatrix.compose(carPosition, carQuaternion, carScale);
     gfx.carMesh.setMatrixAt(i, carMatrix);
-    gfx.carMesh.setColorAt(i, carColor.set(car.color));
+    gfx.carMesh.setColorAt(i, carColor.set(car.color).multiplyScalar(1 - dmg * 0.45));
   });
   gfx.carMesh.count = count;
   gfx.carMesh.instanceMatrix.needsUpdate = true;
@@ -1670,6 +1756,7 @@ export function syncActors(gfx, world, player) {
 }
 
 const pedScale = new THREE.Vector3(1, 1, 1);
+const pedTilt = new THREE.Quaternion(), pedTiltX = new THREE.Vector3(1, 0, 0);
 const PED_TINT_C = PED_TINTS.map((c) => new THREE.Color(c));
 function syncPeds(gfx, player, peds) {
   const mesh = gfx.pedMesh;
@@ -1680,11 +1767,15 @@ function syncPeds(gfx, player, peds) {
     const p = peds[i];
     if (Math.hypot(p.x - focus.x, p.y - focus.y) > PED_DRAW_RADIUS) continue;
     const cower = p.state === 'COWER';
+    const down = p.state === 'DOWN';
     const sc = p.scale || 1;
     const tall = 0.8 + ((i * 37) % 11) / 11 * 0.6;
-    pedScale.set(sc, sc * tall * (cower ? 0.6 : 1), sc);
+    // Fold a downed ped so its capsule lies almost flat, like a ragdoll fallen over.
+    const fold = down ? (p.fold || 0) : 0;
+    pedScale.set(sc, sc * tall * (cower ? 0.6 : 1) * (down ? 0.22 : 1), sc);
     carPosition.set(p.x - WORLD_W / 2, (PED_HEIGHT * pedScale.y) / 2 + 1, p.y - WORLD_H / 2);
     carQuaternion.setFromAxisAngle(yAxis, -p.angle);
+    if (down && fold > 0) carQuaternion.multiply(pedTilt.setFromAxisAngle(pedTiltX, -fold * 1.2));
     carMatrix.compose(carPosition, carQuaternion, pedScale);
     mesh.setMatrixAt(n, carMatrix);
     mesh.setColorAt(n, carColor.set(PED_SHIRTS[(p.shirt ?? i) % PED_SHIRTS.length]).multiply(PED_TINT_C[(i * 3) % PED_TINTS.length]));

@@ -5,7 +5,7 @@ import { TILE, T, tileAt, WORLD_W, WORLD_H } from './world.js';
 import { hasLineOfSight, addHeat } from './police.js';
 import { alarmPeds } from './peds.js';
 
-export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48;
+export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48, SHELL_MAX = 40, DEBRIS_MAX = 48, SMOKE_MAX = 64, FIREBALL_MAX = 6;
 import { WEAPONS, WEAPON_ORDER, createAmmo, refill, createPickups, updatePickups } from './weapons.js';
 const RANGE = 600, PED_RADIUS = 14, CAR_HALF_L = 28, CAR_HALF_W = 11, DRIVEBY_SPREAD = 0.10;
 const CAR_HP = 100, PED_HP = 50;
@@ -16,6 +16,7 @@ const DEAD_SECONDS = 3, MONEY_LOSS = 0.1;
 const COP_MIN_STARS = 3, COP_RANGE = 320, COP_CYCLE = 1.4, COP_TELEGRAPH = 0.4, COP_BURST = 3, COP_BURST_GAP = 0.1;
 const COP_DAMAGE = 6, HELI_DAMAGE = 4, HELI_INTERVAL = 0.5, COP_CAR_FACTOR = 0.5;
 const PLAYER_COLOR = [1, 0.85, 0.45], COP_COLOR = [1, 0.3, 0.12];
+const SHAKE_TIME_EXPL = 0.5, SHAKE_MAG_EXPL = 14, EXPL_RADIUS = 200, MUZZLE_H = 13;
 
 function wallDistance(world, ox, oy, dx, dy, range) {
   let tx = Math.floor(ox / TILE), ty = Math.floor(oy / TILE);
@@ -84,13 +85,19 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     bustProgress: 0,
     vignette: 0,
     shake: 0,
+    explShake: 0,
     hit: { t: 0, kill: false, x: 0, y: 0 },
     bust: 0,
     dead: null,
     tracers: makePool(TRACER_MAX, () => ({ t: 0, max: 1, x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0, w: 1, color: PLAYER_COLOR, dim: 1 })),
-    flashes: makePool(FLASH_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, angle: 0, size: 14, color: PLAYER_COLOR })),
-    sparks: makePool(SPARK_MAX, () => ({ t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, hot: 0 })),
-    tracerCursor: 0, flashCursor: 0, sparkCursor: 0,
+    flashes: makePool(FLASH_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, angle: 0, size: 14, color: PLAYER_COLOR })),
+    sparks: makePool(SPARK_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, hot: 0 })),
+    shells: makePool(SHELL_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rot: 0, vr: 0 })),
+    debris: makePool(DEBRIS_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: 1, hot: 0 })),
+    smoke: makePool(SMOKE_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, size: 1, life: 1 })),
+    fireballs: makePool(FIREBALL_MAX, () => ({ t: 0, max: 1, x: 0, y: 0, z: 0, size: 1, color: [1, 0.5, 0.2] })),
+    tracerCursor: 0, flashCursor: 0, sparkCursor: 0, shellCursor: 0, debrisCursor: 0, smokeCursor: 0, fireballCursor: 0,
+    recoil: 0, kick: 0, _kickApplied: 0,
 
     setMouse(clientX, clientY, rect) {
       c.mouse.x = Math.max(0, Math.min(960, (clientX - rect.left) / rect.width * 960));
@@ -98,13 +105,18 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     },
 
     applyShake(camera) {
-      if (c.shake <= 0) return;
-      const m = SHAKE_MAG * (c.shake / SHAKE_TIME);
-      shakeOff.set((Math.random() - 0.5) * 2 * m, (Math.random() - 0.5) * m, (Math.random() - 0.5) * 2 * m);
-      camera.position.add(shakeOff);
+      let m = 0;
+      if (c.shake > 0) m = SHAKE_MAG * (c.shake / SHAKE_TIME);
+      if (c.explShake > 0) m = Math.max(m, SHAKE_MAG_EXPL * (c.explShake / SHAKE_TIME_EXPL));
+      if (m > 0) {
+        shakeOff.set((Math.random() - 0.5) * 2 * m, (Math.random() - 0.5) * m, (Math.random() - 0.5) * 2 * m);
+        camera.position.add(shakeOff);
+      }
+      if (c.kick > 0) { camera.rotateX(c.kick); c._kickApplied = c.kick; }
     },
     clearShake(camera) {
-      camera.position.sub(shakeOff);
+      if (c._kickApplied) { camera.rotateX(-c._kickApplied); c._kickApplied = 0; }
+      if (shakeOff.x || shakeOff.y || shakeOff.z) camera.position.sub(shakeOff);
       shakeOff.set(0, 0, 0);
     },
 
@@ -150,9 +162,13 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     update(dt, keys, rawDt = dt) {
       c.vignette = Math.max(0, c.vignette - dt);
       c.shake = Math.max(0, c.shake - dt);
+      c.explShake = Math.max(0, c.explShake - dt);
+      c.kick = Math.max(0, c.kick - dt * 6);
+      c.recoil = Math.max(0, c.recoil - dt * 0.12);
       c.hit.t = Math.max(0, c.hit.t - dt);
       c.cool = Math.max(0, c.cool - dt);
       tickFx(dt);
+      updateCarFx(dt);
       updateAim();
       WEAPON_ORDER.forEach((id, i) => { if (keys.has(String(i + 1)) && !prevKeys.has(String(i + 1))) c.weapon = id; });
       const q = keys.has('q') && !c.dead;
@@ -213,17 +229,54 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     Object.assign(t, { t: life, max: life, x0, y0, z0, x1, y1, z1, w, color, dim });
   }
 
-  function addFlash(x, y, angle, size, color, life) {
+  function addFlash(x, y, z, angle, size, color, life) {
     const f = c.flashes[c.flashCursor++ % FLASH_MAX];
-    Object.assign(f, { t: life, max: life, x, y, angle, size, color });
+    Object.assign(f, { t: life, max: life, x, y, z, angle, size, color });
   }
 
-  function addSparks(x, y, n) {
+  function addSparks(x, y, n, z = 6) {
     for (let i = 0; i < n; i++) {
       const s = c.sparks[c.sparkCursor++ % SPARK_MAX];
       const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 90;
-      Object.assign(s, { t: 0.35 + Math.random() * 0.25, x, y, z: 6 + Math.random() * 6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 60 + Math.random() * 90, hot: Math.random() < 0.5 ? 0 : 1 });
+      Object.assign(s, { t: 0.35 + Math.random() * 0.25, max: 0.6, x, y, z: z + Math.random() * 6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 60 + Math.random() * 90, hot: Math.random() < 0.5 ? 0 : 1 });
     }
+  }
+
+  function addShell(x, y, z, angle, spread) {
+    const s = c.shells[c.shellCursor++ % SHELL_MAX];
+    const a = angle + Math.PI / 2 + (Math.random() - 0.5) * spread;
+    const sp = 60 + Math.random() * 90;
+    Object.assign(s, { t: 1.6 + Math.random() * 0.6, max: 2.2, x, y, z: z + 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 140 + Math.random() * 130, rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 20 });
+  }
+
+  function addDebris(x, y, z, n) {
+    for (let i = 0; i < n; i++) {
+      const d = c.debris[c.debrisCursor++ % DEBRIS_MAX];
+      const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 260;
+      Object.assign(d, { t: 1.2 + Math.random() * 0.8, max: 2, x, y, z: z + Math.random() * 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 120 + Math.random() * 260, size: 2 + Math.random() * 4, hot: Math.random() < 0.8 ? 0 : 1 });
+    }
+  }
+
+  function addSmoke(x, y, z, size, life) {
+    const s = c.smoke[c.smokeCursor++ % SMOKE_MAX];
+    Object.assign(s, { t: life, max: life, x, y, z, size, life });
+  }
+
+  function addFireball(x, y, z, size) {
+    const f = c.fireballs[c.fireballCursor++ % FIREBALL_MAX];
+    Object.assign(f, { t: 0.7, max: 0.7, x, y, z, size, color: [1, 0.55, 0.22] });
+  }
+
+  function explodeCar(car) {
+    addFireball(car.x, car.y, 14, 70);
+    addFireball(car.x + (Math.random() - 0.5) * 24, car.y + (Math.random() - 0.5) * 24, 20, 34);
+    addDebris(car.x, car.y, 16, 16);
+    for (let i = 0; i < 10; i++) addSmoke(car.x + (Math.random() - 0.5) * 30, car.y + (Math.random() - 0.5) * 20, 10 + i * 5, 14 + Math.random() * 14, 1.4 + Math.random() * 0.8);
+    for (let i = 0; i < 24; i++) addSparks(car.x, car.y, 1, 20);
+    const d = Math.hypot(car.x - player.x, car.y - player.y);
+    c.explShake = Math.max(c.explShake, SHAKE_TIME_EXPL * Math.max(0, 1 - d / EXPL_RADIUS));
+    alarmPeds(peds, car.x, car.y, 320);
+    addHeat(world, 20, 'explosion');
   }
 
   function tickFx(dt) {
@@ -235,6 +288,42 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       s.vz -= 380 * dt;
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
       if (s.z < 0) s.t = 0;
+    }
+    for (const s of c.shells) {
+      if (s.t <= 0) continue;
+      s.t -= dt;
+      s.vz -= 700 * dt;
+      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+      s.rot += s.vr * dt;
+      if (s.z <= 0) { s.z = 0; s.vz = -s.vz * 0.35; s.vx *= 0.6; s.vy *= 0.6; if (Math.abs(s.vz) < 30) { s.vz = 0; s.vx = 0; s.vy = 0; } }
+    }
+    for (const d of c.debris) {
+      if (d.t <= 0) continue;
+      d.t -= dt;
+      d.vz -= 700 * dt;
+      d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+      if (d.z < 0) { d.z = 0; d.vz = -d.vz * 0.4; d.vx *= 0.6; d.vy *= 0.6; }
+    }
+    for (const s of c.smoke) {
+      if (s.t <= 0) continue;
+      s.t -= dt;
+      s.z += 30 * dt;
+      s.size += 18 * dt;
+    }
+    for (const f of c.fireballs) if (f.t > 0) f.t -= dt;
+  }
+
+  function updateCarFx(dt) {
+    for (const car of world.cars) {
+      const hp = car.hp ?? CAR_HP;
+      if (hp > 0 && hp <= CAR_HP * 0.5) {
+        car.smokeT = (car.smokeT ?? 0) - dt;
+        if (car.smokeT <= 0) {
+          car.smokeT = 0.06 + Math.random() * 0.12;
+          const cs = Math.cos(car.angle), sn = Math.sin(car.angle);
+          addSmoke(car.x - cs * 14, car.y - sn * 14, 16, 8 + Math.random() * 6, 1.4 + Math.random() * 0.6);
+        }
+      }
     }
   }
 
@@ -259,7 +348,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       let kill = false;
       if (target.hp <= 0) {
         if (mission) target.hp = 1;
-        else { kill = true; removeCar(target); addSparks(target.x, target.y, 14); }
+        else { kill = true; explodeCar(target); removeCar(target); }
       }
       const heat = cop ? (kill ? 80 : 30) : target.driver === 'npc' || mission ? (kill ? 40 : 15) : 5;
       addHeat(world, heat, cop ? 'shoot cop' : 'shoot car');
@@ -271,7 +360,12 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       alarmPeds(peds, hit.x, hit.y, 200);
       addHeat(world, kill ? 35 : 15, 'shoot ped');
       if (ui.rep) ui.rep.add(target.x, target.y, kill ? -5 : -1);
-      if (kill) { target.hp = PED_HP; target.x = -5000; target.y = -5000; }
+      if (kill) {
+        target.hp = PED_HP;
+        target.state = 'DOWN';
+        target.timer = 1.2;
+        target.tumble = { dx: hit.x - target.x, dy: hit.y - target.y, t: 0 };
+      }
       addSparks(hit.x, hit.y, 3);
       markHit(hit.x, hit.y, kill);
     }
@@ -290,20 +384,28 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     if (car) { base = car.angle; spread = Math.max(DRIVEBY_SPREAD, w.spread); }
     else { base = Math.atan2(c.aim.y - src.y, c.aim.x - src.x); spread = w.spread; player.facing = base; }
     c.cool = w.cooldown;
-    const reach = car ? 30 : 12;
+    // Per-weapon recoil: camera pitch kick (visual) + aim drift upward while firing fast.
+    c.kick = Math.min(0.5, c.kick + w.kick);
+    c.recoil = Math.min(0.03, c.recoil + w.recoil);
+    base += c.recoil;
+    if (!car) player.facing = base;
+    const reach = car ? 30 : 16;
+    const mz = car ? 14 : MUZZLE_H;
+    const mxx = src.x + Math.cos(base) * reach, myy = src.y + Math.sin(base) * reach;
     const hits = new Map();
     for (let i = 0; i < w.pellets; i++) {
       const angle = base + (Math.random() * 2 - 1) * spread;
       const hit = c.hitscan(src, angle, { exclude: car, range: w.range });
       const mx = src.x + Math.cos(angle) * reach, my = src.y + Math.sin(angle) * reach;
-      addTracer(mx, my, 14, hit.x, hit.y, 12, 1.4, PLAYER_COLOR, 0.1);
-      if (i === 0) addFlash(mx, my, angle, w.pellets > 1 ? 24 : 16, PLAYER_COLOR, 0.06);
+      addTracer(mx, my, mz, hit.x, hit.y, 12, 1.4, PLAYER_COLOR, 0.1);
+      if (i === 0) addFlash(mx, my, mz, angle, w.pellets > 1 ? 26 : 18, PLAYER_COLOR, 0.06);
       if (hit.kind !== 'none' && (i < 2 || w.pellets === 1)) addSparks(hit.x, hit.y, hit.kind === 'wall' ? 3 : 2);
       if (hit.target) {
         const e = hits.get(hit.target);
         if (e) e.dmg += w.damage; else hits.set(hit.target, { hit, dmg: w.damage });
       }
     }
+    addShell(mxx, myy, mz, base, 0.5);
     alarmPeds(peds, src.x, src.y, 150);
     for (const { hit, dmg } of hits.values()) damage(hit, dmg);
   }
@@ -331,7 +433,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     const dx = Math.cos(angle), dy = Math.sin(angle);
     const wall = wallDistance(world, sx, sy, dx, dy, len);
     addTracer(sx, sy, z0, sx + dx * wall, sy + dy * wall, 12, 3, COP_COLOR, life);
-    addFlash(sx + dx * 14, sy + dy * 14, angle, 18, COP_COLOR, 0.08);
+    addFlash(sx + dx * 14, sy + dy * 14, z0, angle, 18, COP_COLOR, 0.08);
     if (hits && wall >= len) {
       if (dmg > 0) {
         hurtPlayer(dmg);
@@ -358,7 +460,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       if (!cop.fire) {
         if (ok && !(cop.fireCool > 0)) {
           cop.fire = { t: 0, shots: 0 };
-          addFlash(cop.x, cop.y, 0, 9, COP_COLOR, COP_TELEGRAPH);
+          addFlash(cop.x, cop.y, 10, 0, 9, COP_COLOR, COP_TELEGRAPH);
         }
         continue;
       }
@@ -421,9 +523,13 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     if (best) { player.x = best.x; player.y = best.y; }
     player.vx = 0; player.vy = 0;
     player.health = MAX_HEALTH;
-    c.sinceHit = REGEN_DELAY; c.bust = 0; c.bustProgress = 0; c.vignette = 0; c.shake = 0;
+    c.sinceHit = REGEN_DELAY; c.bust = 0; c.bustProgress = 0; c.vignette = 0; c.shake = 0; c.explShake = 0; c.kick = 0; c.recoil = 0;
     for (const t of c.tracers) t.t = 0;
     for (const f of c.flashes) f.t = 0;
+    for (const s of c.shells) s.t = 0;
+    for (const d of c.debris) d.t = 0;
+    for (const s of c.smoke) s.t = 0;
+    for (const f of c.fireballs) f.t = 0;
     c.dead = null; ui.dead = null; ui.state = 'PLAYING';
     ui.save();
   }

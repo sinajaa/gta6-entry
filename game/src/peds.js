@@ -134,6 +134,19 @@ export function updatePeds(world, player, peds, dt) {
       movePanic(world, p, dt);
       p.timer -= dt;
       if (p.timer <= 0) { p.state = 'COWER'; p.timer = COWER_TIME; p.speed = 0; }
+    } else if (p.state === 'DOWN') {
+      // Short ragdoll-like tumble: a dead ped flops backward a little and folds over,
+      // then is recycled away from the player.
+      const t = p.tumble;
+      p.timer -= dt;
+      const k = Math.min(1, (1.2 - p.timer) * 3);
+      if (t) {
+        const nx = p.x + t.dx * dt * 3, ny = p.y + t.dy * dt * 3;
+        if (tileAt(world, nx, ny) !== T.BUILDING) { p.x = nx; p.y = ny; }
+        p.angle = Math.atan2(t.dy, t.dx);
+      }
+      p.fold = Math.min(1, k * 1.5); // how flattened the capsule renders
+      if (p.timer <= 0) { p.x = -5000; p.y = -5000; p.fold = 0; p.state = 'WALK'; p.speed = WALK_SPEED; }
     } else if (p.state === 'COWER') {
       p.timer -= dt;
       if (p.timer <= 0) { p.state = 'WALK'; p.speed = WALK_SPEED; p.timer = 1 + Math.random() * 4; snapToSidewalk(world, p); }
