@@ -101,22 +101,21 @@ const SHOTS = {
   },
 
   chase: {
-    light: { hemi: 1.0, ambient: 0.45, sun: 1.2, exposure: 1.15 },
+    light: { hemi: 0.15, ambient: 0.03, sun: 14, exposure: 2.8, sunColor: '#b8ccff', sunDir: [-500, 260, -200], hemiSky: '#6a7fb8', hemiGnd: '#1a1a24' },
     hour: 21,
     setup(c) {
       const car = freeCars(c)[0];
       enterCar(c, car, 780, 1328, 0, 230);
       c.world.time = 0;
       wanted3(c);
-      addCop(c, 690, 1328, 0, 240);
-      addCop(c, 640, 1296, 0, 240);
+      c.cops = [addCop(c, 690, 1328, 0, 240), addCop(c, 640, 1296, 0, 240)];
     },
     tick(c) {
       const car = c.player.car;
       c.keys.add('w');
-      car.y = 1328; car.angle = 0;
+      car.x = 780; car.y = 1328; car.angle = 0;
       c.player.x = car.x; c.player.y = car.y;
-      if (car.x > 2100) car.x -= 1400;
+      put(c.cops[0], 690, 1328, 0, 240); put(c.cops[1], 640, 1296, 0, 240);
     },
     camera(c, cam) {
       const car = c.player.car;
@@ -126,7 +125,7 @@ const SHOTS = {
   },
 
   firefight: {
-    light: { hemi: 0.38, ambient: 0.16, sun: 9.5, exposure: 2.45, sunColor: '#ff9a5a', sunDir: [-650, 120, 250], hemiSky: '#8a72b0', hemiGnd: '#241418' },
+    light: { hemi: 0.05, ambient: 0.0, sun: 40, exposure: 2.0, sunColor: '#ff9a5a', sunDir: [-650, 120, 250], hemiSky: '#8a72b0', hemiGnd: '#241418' },
     hour: 18.9,
     setup(c) {
       const { player, combat, world } = c;
@@ -166,19 +165,18 @@ const SHOTS = {
   },
 
   driving: {
-    light: { hemi: 0.05, ambient: 0.01, sun: 14, exposure: 2.6, sunColor: '#ff7a4a', sunDir: [-700, 90, -300], hemiSky: '#8a6ab0', hemiGnd: '#1a1018' },
+    light: { hemi: 0.1, ambient: 0.03, sun: 14, exposure: 2.6, sunColor: '#ff7a4a', sunDir: [-700, 90, -300], hemiSky: '#8a6ab0', hemiGnd: '#1a1018' },
     hour: 18.3,
     setup(c) {
       const car = freeCars(c)[0];
-      enterCar(c, car, 336, 1650, HALF_PI, 230);
+      enterCar(c, car, 336, 1480, HALF_PI, 230);
       c.world.time = 0;
     },
     tick(c) {
       const car = c.player.car;
       c.keys.add('w');
-      car.x = 336; car.angle = HALF_PI;
+      car.x = 336; car.y = 1480; car.angle = HALF_PI;
       c.player.x = car.x; c.player.y = car.y;
-      if (car.y > 2100) car.y -= 700;
     },
     camera(c, cam) {
       const car = c.player.car;
@@ -191,24 +189,35 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
   const def = SHOTS[NAME];
   if (!def) return null;
   const c = { world, player, police, peds, gfx, combat, keys, ui, pinWanted: false };
-  let ready = false, lit = false;
+  let ready = false, hooked = false;
+  setHour(gfx, def.hour);
+  const applyLight = () => {
+    const L = def.light;
+    if (!L) return;
+    gfx.hemi.intensity = L.hemi; gfx.ambient.intensity = L.ambient;
+    gfx.sun.intensity = L.sun; gfx.renderer.toneMappingExposure = L.exposure;
+    if (L.sunColor) gfx.sun.color.set(L.sunColor);
+    if (L.hemiSky) gfx.hemi.color.set(L.hemiSky);
+    if (L.hemiGnd) gfx.hemi.groundColor.set(L.hemiGnd);
+  };
+  if (def.light && def.light.sunDir) gfx.sunDirOverride = new THREE.Vector3(...def.light.sunDir);
   return {
     name: NAME,
     tick(dt) {
       if (ui.state !== 'PLAYING') return;
+      if (!hooked) {
+        hooked = true;
+        const prev = gfx.beforeDraw;
+        gfx.beforeDraw = () => {
+          applyLight();
+          if (gfx.base && def.light) { gfx.base.exp = def.light.exposure; gfx.base.sun = def.light.sun; gfx.base.hemi = def.light.hemi; }
+          if (prev) prev();
+        };
+      }
       if (!ready) { ready = true; setHour(gfx, def.hour); def.setup(c); }
+      if (gfx.hour !== def.hour) gfx.hour = def.hour;
       if (player.health < 100) player.health = 100;
       if (c.pinWanted) { police.heat = 250; police.stars = 3; }
-      if (def.light && gfx.dayKey === gfx.hour && !lit) {
-        lit = true;
-        const L = def.light;
-        gfx.hemi.intensity = L.hemi; gfx.ambient.intensity = L.ambient;
-        gfx.sun.intensity = L.sun; gfx.renderer.toneMappingExposure = L.exposure;
-        if (L.sunColor) gfx.sun.color.set(L.sunColor);
-        if (L.sunDir) gfx.sunDirOverride = new THREE.Vector3(...L.sunDir);
-        if (L.hemiSky) gfx.hemi.color.set(L.hemiSky);
-        if (L.hemiGnd) gfx.hemi.groundColor.set(L.hemiGnd);
-      }
       if (def.tick) def.tick(c, dt);
     },
     camera(cam) {

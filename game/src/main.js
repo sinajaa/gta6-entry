@@ -163,5 +163,9 @@ function frame(now) {
   ui.update(0);
   requestAnimationFrame(frame);
 }
+if (new URLSearchParams(location.search).has('shot')) {
+  ui.state = 'PLAYING';
+  try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
+}
 requestAnimationFrame(frame);
 window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
