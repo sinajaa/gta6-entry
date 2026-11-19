@@ -73,7 +73,7 @@ function placePeds(c, spots) {
 
 const SHOTS = {
   street: {
-    light: { hemi: 1.3, ambient: 0.5, sun: 3.6, exposure: 1.7 },
+    light: { hemi: 0.12, ambient: 0.03, sun: 14, exposure: 2.6, sunColor: '#ffb066', sunDir: [-700, 170, -120], hemiSky: '#7f9cc8', hemiGnd: '#2a1c14' },
     hour: 17.5,
     setup(c) {
       const { player, world, police } = c;
@@ -126,7 +126,7 @@ const SHOTS = {
   },
 
   firefight: {
-    light: { hemi: 1.3, ambient: 0.5, sun: 3.6, exposure: 1.7 },
+    light: { hemi: 0.02, ambient: 0, sun: 13, exposure: 2.15, sunColor: '#ffc27a', sunDir: [-650, 140, 250], hemiSky: '#6a86b8', hemiGnd: '#1e1410' },
     hour: 17.2,
     setup(c) {
       const { player, combat, world } = c;
@@ -166,8 +166,8 @@ const SHOTS = {
   },
 
   driving: {
-    light: { hemi: 1.1, ambient: 0.4, sun: 3.6, exposure: 1.3 },
-    hour: 17.7,
+    light: { hemi: 0.05, ambient: 0.01, sun: 14, exposure: 2.6, sunColor: '#ff7a4a', sunDir: [-700, 90, -300], hemiSky: '#8a6ab0', hemiGnd: '#1a1018' },
+    hour: 18.3,
     setup(c) {
       const car = freeCars(c)[0];
       enterCar(c, car, 336, 1650, HALF_PI, 230);
@@ -204,6 +204,10 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
         const L = def.light;
         gfx.hemi.intensity = L.hemi; gfx.ambient.intensity = L.ambient;
         gfx.sun.intensity = L.sun; gfx.renderer.toneMappingExposure = L.exposure;
+        if (L.sunColor) gfx.sun.color.set(L.sunColor);
+        if (L.sunDir) gfx.sunDirOverride = new THREE.Vector3(...L.sunDir);
+        if (L.hemiSky) gfx.hemi.color.set(L.hemiSky);
+        if (L.hemiGnd) gfx.hemi.groundColor.set(L.hemiGnd);
       }
       if (def.tick) def.tick(c, dt);
     },

@@ -1448,7 +1448,7 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
   updateDayNight(gfx);
-  gfx.sun.position.set(tx, 0, tz).add(SUN_DIR);
+  gfx.sun.position.set(tx, 0, tz).add(gfx.sunDirOverride || SUN_DIR);
   syncCarLights(gfx, world);
   if (gfx.beforeDraw) gfx.beforeDraw();
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
