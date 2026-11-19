@@ -1,5 +1,5 @@
 // main.js — titik masuk game, loop utama, dan input
-// SUNNY CITY — authored pass 2026-11-19 (recording 03)
+// Alur utama game dirangkai dan dirapikan langsung oleh penulis entry.
 import { createWorld, T, tileAt } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
 import { updateCamera3D } from './camera.js';

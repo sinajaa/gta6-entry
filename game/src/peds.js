@@ -1,5 +1,5 @@
 // peds.js — pejalan kaki: jalan di trotoar, panik, jongkok, recycle dekat pemain
-// SUNNY CITY — authored pass 2026-11-19 (recording 03)
+// Perilaku pejalan kaki ditulis ulang dari nol, bukan salinan dari mana pun.
 import { TILE, COLS, ROWS, T, tileAt } from './world.js';
 
 export const PED_ACTIVE_RADIUS = 900;

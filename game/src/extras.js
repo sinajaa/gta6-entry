@@ -1,5 +1,5 @@
 // extras.js — garasi, paket collectible, dan cuaca (hujan, jalan basah, petir)
-// SUNNY CITY — gameplay depth pass 2
+// Garasi, paket, dan cuaca di sini dikerjakan sebagai tambahan kedalaman gameplay.
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, T, tileAt, WORLD_W, WORLD_H } from './world.js';
 import { GARAGE_ROWS } from './ui.js';

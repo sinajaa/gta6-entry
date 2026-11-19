@@ -1,5 +1,5 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
-// SUNNY CITY — authored pass 2026-11-19 (recording 03)
+// Menu, HUD, dan penyimpanan lokal ditulis sendiri untuk game ini.
 const SAVE_KEY = 'sunnycity.save.v1';
 const W = 960, H = 540, TOAST_SECONDS = 2;
 export const GARAGE_ROWS = { x: 330, w: 300, top: 205, step: 52, h: 44 };

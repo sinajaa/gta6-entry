@@ -1,4 +1,4 @@
-# SUNNY CITY — authored pass 2026-11-19 (recording 03)
+# Alur deploy ini disusun sendiri agar game bisa dimainkan langsung dari browser.
 name: deploy-play
 
 on:

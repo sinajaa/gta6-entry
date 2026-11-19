@@ -23,6 +23,8 @@ const meta = {
   tagline: 'Sunlit 3D crime sandbox: steal cars, outrun the cops, run missions.',
 };
 
+const BUILD_VERSION = 'v3-2026.11.19';
+
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
@@ -46,4 +48,4 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
-console.log(`game "${meta.name}" | slug ${meta.slug} | output dir ${out}`);
+console.log(`game "${meta.name}" | slug ${meta.slug} | build ${BUILD_VERSION} | output dir ${out}`);

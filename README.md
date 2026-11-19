@@ -17,6 +17,19 @@ world markers and a compass, HUD with minimap, money and health, start menu, pau
 
 Everything is original: own city layout, names, characters and art, no Rockstar assets.
 
+## Fitur V3
+
+Versi V3 menambahkan siklus siang dan malam yang berjalan terus selama permainan, delapan misi
+bercerita yang saling berantai, empat senjata yang dipilih lewat roda senjata, sebuah garasi untuk
+memperbaiki dan mengecat ulang mobil, tiga stasiun radio di dalam kendaraan, hujan yang datang
+secara berkala dengan jalan basah dan petir, serta dua belas paket tersembunyi yang menambah uang.
+
+## Kontrol V3
+
+Gerak memakai WASD, Shift untuk berlari, dan Enter untuk memulai dari menu. Tombol 1 sampai 4
+memilih senjata, Q membuka roda senjata, R mengganti stasiun radio saat mengemudi, P serta Esc
+menjeda permainan dan menyimpan progres.
+
 ## Run it
 
 ```bash

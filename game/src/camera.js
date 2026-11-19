@@ -1,5 +1,5 @@
 // camera.js — kamera chase 3D dan zoom saat mengemudi
-// SUNNY CITY — authored pass 2026-11-19 (recording 03)
+// Logika kamera chase ini ditulis khusus untuk entry SUNNY CITY.
 import { WORLD_W, WORLD_H, TILE, COLS, ROWS } from "./world.js";
 const WORLD_W_HALF = WORLD_W / 2, WORLD_H_HALF = WORLD_H / 2;
 const DRIVE_ZOOM = 0.75;

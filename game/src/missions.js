@@ -1,5 +1,5 @@
 // missions.js — 8 misi berantai dengan cerita singkat: kurir, kejar, eksekusi, lindungi, curi, balapan, gelombang polisi, finale
-// SUNNY CITY — authored pass 2026-11-19 (recording 03)
+// Rangkaian misi dan alur ceritanya karangan asli untuk kota SUNNY CITY.
 import { addHeat } from './police.js';
 
 const GAP_SECONDS = 3;

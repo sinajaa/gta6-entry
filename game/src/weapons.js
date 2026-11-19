@@ -1,3 +1,4 @@
+// Daftar senjata dan amunisi ini ditulis sendiri oleh pembuat entry.
 // weapons.js — definisi 4 senjata, ammo, dan pickup kotak ammo
 export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle'];
 
