@@ -200,6 +200,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
         ui.addMoney(PACKAGE_REWARD);
         ui.save();
         audio.pickup();
+        if (ui.pkCount === PACKAGE_COUNT) ui.toast('SEMUA PAKET TERKUMPUL!', 3);
       }
       const bob = 12 + Math.sin(clock * 2.4 + i) * 3, vis = p.got ? 0 : 1;
       dummy.position.set(toX(p.x), bob, toZ(p.y));

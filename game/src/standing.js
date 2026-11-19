@@ -7,7 +7,7 @@ const clamp = (v) => Math.max(0, Math.min(100, v));
 
 export function normalizeStanding(raw) {
   const a = Array.isArray(raw) ? raw : [];
-  return [0, 1, 2].map((i) => (Number.isFinite(a[i]) ? clamp(a[i]) : 0));
+  return [0, 1, 2].map((i) => (Number.isFinite(Number(a[i])) ? clamp(Number(a[i])) : 0));
 }
 
 export function createStanding(ui) {

@@ -175,7 +175,8 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
       tickFx(dt);
       updateCarFx(dt);
       updateAim();
-      WEAPON_ORDER.forEach((id, i) => { if (keys.has(String(i + 1)) && !prevKeys.has(String(i + 1))) c.weapon = id; });
+      const doSwitch = (id) => { if (id !== c.weapon) { c.weapon = id; c.cool = Math.max(c.cool, WEAPONS[id].switchMs); } };
+      WEAPON_ORDER.forEach((id, i) => { if (keys.has(String(i + 1)) && !prevKeys.has(String(i + 1))) doSwitch(id); });
       const q = keys.has('q') && !c.dead;
       if (q) {
         const dx = c.mouse.x - 480, dy = c.mouse.y - 270;
@@ -183,7 +184,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
           const a = Math.atan2(dy, dx);
           c.wheelSel = Math.round((a + Math.PI / 2) / (Math.PI / 2) + 8) % 4;
         }
-      } else if (c.wheelOpen && c.wheelSel != null) { c.weapon = WEAPON_ORDER[c.wheelSel]; c.wheelSel = null; }
+      } else if (c.wheelOpen && c.wheelSel != null) { doSwitch(WEAPON_ORDER[c.wheelSel]); c.wheelSel = null; }
       c.wheelOpen = q;
       prevKeys = new Set(keys);
       const wd = WEAPONS[c.weapon];

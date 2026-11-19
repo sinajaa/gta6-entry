@@ -48,7 +48,7 @@ export function createPeds(world, px, py, count = 120) {
   for (let i = 0; i < count; i++) {
     const p = {
       x: 0, y: 0, angle: 0, speed: WALK_SPEED, state: 'WALK', timer: 0, fx: 0, fy: 0,
-      shirt: i % SHIRT_COUNT, scale: 0.85 + Math.random() * 0.3,
+      shirt: Math.floor(Math.random() * SHIRT_COUNT), scale: 0.85 + Math.random() * 0.3,
     };
     placeNear(world, p, px, py, SPAWN_MIN, SPAWN_MAX);
     peds.push(p);

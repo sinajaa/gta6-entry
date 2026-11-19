@@ -3,10 +3,10 @@
 export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle'];
 
 export const WEAPONS = {
-  pistol: { name: 'PISTOL', damage: 25, cooldown: 0.25, spread: 0.01, pellets: 1, range: 600, maxAmmo: 120, startAmmo: 60, pack: 24, recoil: 0.012, kick: 0.14 },
-  smg: { name: 'SMG', damage: 12, cooldown: 0.08, spread: 0.06, pellets: 1, range: 520, maxAmmo: 300, startAmmo: 120, pack: 60, recoil: 0.006, kick: 0.07 },
-  shotgun: { name: 'SHOTGUN', damage: 11, cooldown: 0.8, spread: 0.14, pellets: 6, range: 260, maxAmmo: 40, startAmmo: 16, pack: 8, recoil: 0.04, kick: 0.5 },
-  rifle: { name: 'RIFLE', damage: 50, cooldown: 0.45, spread: 0.004, pellets: 1, range: 800, maxAmmo: 90, startAmmo: 30, pack: 15, recoil: 0.02, kick: 0.3 },
+  pistol: { name: 'PISTOL', damage: 25, cooldown: 0.25, spread: 0.01, pellets: 1, range: 600, maxAmmo: 120, startAmmo: 60, pack: 24, recoil: 0.012, kick: 0.14, switchMs: 0.15 },
+  smg: { name: 'SMG', damage: 12, cooldown: 0.08, spread: 0.06, pellets: 1, range: 520, maxAmmo: 300, startAmmo: 120, pack: 60, recoil: 0.006, kick: 0.07, switchMs: 0.2 },
+  shotgun: { name: 'SHOTGUN', damage: 11, cooldown: 0.8, spread: 0.14, pellets: 6, range: 260, maxAmmo: 40, startAmmo: 16, pack: 8, recoil: 0.04, kick: 0.5, switchMs: 0.4 },
+  rifle: { name: 'RIFLE', damage: 50, cooldown: 0.45, spread: 0.004, pellets: 1, range: 800, maxAmmo: 90, startAmmo: 30, pack: 15, recoil: 0.02, kick: 0.3, switchMs: 0.45 },
 };
 
 export const PICKUP = { max: 5, radius: 30, minDist: 120, maxDist: 520, interval: 6, farDist: 900 };

@@ -55,7 +55,7 @@ export function districtAt(x, y) {
 }
 
 function districtFloors(bx, by, rand) {
-  const [lo, hi] = [[3, 6], [2, 4], [1, 2]][districtOfBlock(bx, by)];
+  const [lo, hi] = [[3, 6], [2, 4], [1, 3]][districtOfBlock(bx, by)];
   return lo + Math.floor(rand() * (hi - lo + 1));
 }
 

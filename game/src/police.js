@@ -200,8 +200,8 @@ function blockedByCar(car, world) {
   for (const other of world.cars) {
     if (other === car) continue;
     const dx = other.x - car.x, dy = other.y - car.y;
-    if (dx * dx + dy * dy > 50 * 50) continue;
-    if (Math.abs(normalizeAngle(Math.atan2(dy, dx) - car.angle)) < 0.6) return true;
+    if (dx * dx + dy * dy > 56 * 56) continue;
+    if (Math.abs(normalizeAngle(Math.atan2(dy, dx) - car.angle)) < 0.5) return true;
   }
   return false;
 }

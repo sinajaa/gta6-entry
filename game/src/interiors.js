@@ -74,6 +74,7 @@ function furnish(g, i) {
       box(g, 14, 8, 14, x + 26, 8, z, 0xb03a2e);
     }
     box(g, 220, 24, 14, 0, 12, -HALF_D + 10, 0x6b4a2f);
+    box(g, 10, 16, 10, 60, 8, 40, 0x6b4a2f); box(g, 14, 14, 14, 60, 15, 40, 0x2f6b4a);
   } else if (i === 1) {
     box(g, 200, 22, 16, 0, 11, -30, 0x2b2f36);
     for (const x of [-90, -45, 0, 45, 90]) {

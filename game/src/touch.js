@@ -16,7 +16,8 @@ export function createTouch({ onStick, onButton }) {
     const radius = r.width / 2;
     let dx = (e.clientX - (r.left + radius)) / radius, dy = (e.clientY - (r.top + radius)) / radius;
     const len = Math.hypot(dx, dy);
-    if (len > 1) { dx /= len; dy /= len; }
+    if (len < 0.12) { dx = dy = 0; }
+    else if (len > 1) { dx /= len; dy /= len; }
     knob.style.transform = `translate(${dx * radius * 0.6}px, ${dy * radius * 0.6}px)`;
     onStick(dx, dy);
   };

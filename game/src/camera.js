@@ -9,7 +9,7 @@ export function createCamera(viewW, viewH) {
 }
 
 export function updateCamera(cam, target, world, dt, driving = false) {
-  const k = 1 - Math.exp(-6 * dt);
+  const k = 1 - Math.exp(-7.5 * dt);
   cam.zoom += ((driving ? DRIVE_ZOOM : 1) - cam.zoom) * (1 - Math.exp(-3 * dt));
   cam.visW = cam.viewW / cam.zoom;
   cam.visH = cam.viewH / cam.zoom;
