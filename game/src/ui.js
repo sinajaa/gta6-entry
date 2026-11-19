@@ -73,11 +73,15 @@ function drawPlaying(ctx, ui) {
   const pk = 'PAKET ' + ui.pkCount + '/' + ui.pkTotal;
   ctx.strokeText(pk, W - 20, 118); ctx.fillText(pk, W - 20, 118);
   ctx.font = 'bold 26px sans-serif';
-  ctx.font = 'bold 20px sans-serif';
+  ctx.font = 'bold 15px sans-serif';
   ui.toasts.forEach((t, i) => {
     ctx.globalAlpha = Math.max(0, Math.min(1, t.t / ((t.max || TOAST_SECONDS) * 0.4)));
+    let s = t.text;
+    while (s.length > 1 && ctx.measureText(s).width > 392) s = s.slice(0, -2).trimEnd() + '\u2026';
+    const tw = Math.min(420, ctx.measureText(s).width + 24), y = 144 + i * 28;
+    ctx.fillStyle = 'rgba(8,8,14,0.6)'; ctx.fillRect(W - 20 - tw + 8, y - 17, tw, 24);
     ctx.fillStyle = '#ffe27a';
-    ctx.strokeText(t.text, W - 20, 144 + i * 26); ctx.fillText(t.text, W - 20, 144 + i * 26);
+    ctx.fillText(s, W - 20 - 4, y);
   });
   if (ui.prompt) {
     ctx.globalAlpha = 1; ctx.textAlign = 'center'; ctx.font = 'bold 18px sans-serif';

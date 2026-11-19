@@ -83,8 +83,11 @@ function drawSky(gfx, top, mid, hor) {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   const rnd = skyRng(7);
-  if (night > 0.3) {
-    ctx.globalAlpha = Math.min(1, (night - 0.3) / 0.5);
+  const lum = 0.3 * hor.r + 0.59 * hor.g + 0.11 * hor.b;
+  const starAmt = Math.min(1, Math.max(0, (0.3 - lum) / 0.18));
+  gfx.starAmt = starAmt;
+  if (starAmt > 0.02) {
+    ctx.globalAlpha = starAmt;
     for (let i = 0; i < 140; i++) {
       const y = rnd() * H * 0.3, b = 0.4 + rnd() * 0.6;
       ctx.fillStyle = `rgba(255,255,${220 + Math.floor(rnd() * 35)},${b})`;
@@ -278,7 +281,7 @@ export function initRenderer(canvas, hudCanvas, world) {
   renderer.shadowMap.autoUpdate = false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.92;
-  canvas.style.filter = 'contrast(1.5) saturate(1.25) brightness(1.0)';
+  canvas.style.filter = 'contrast(1.40) saturate(1.22) brightness(1.02)';
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -1452,6 +1455,8 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   syncCarLights(gfx, world);
   if (gfx.beforeDraw) gfx.beforeDraw();
   if (gfx.interiorBefore) gfx.interiorBefore();
+  if (gfx.hemi.intensity < 0.40) gfx.hemi.intensity = 0.40;
+  if (gfx.ambient.intensity < 0.14) gfx.ambient.intensity = 0.14;
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
   gfx.renderer.render(gfx.scene, gfx.camera);
   if (gfx.interiorAfter) gfx.interiorAfter();
@@ -1587,9 +1592,9 @@ export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
-    ctx.fillText(String(Math.round(Math.abs(car.speed) * 0.36)), 930, 500);
+    ctx.fillText(String(Math.round(Math.abs(car.speed) * 0.36)), 930, 452);
     ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#ddd';
-    ctx.fillText('KM/H', 930, 518);
+    ctx.fillText('KM/H', 930, 466);
     ctx.shadowBlur = 0; ctx.textAlign = 'left';
   }
 
@@ -1644,9 +1649,13 @@ function drawMission(ctx, p, missions, camera) {
   if (!text) return;
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#ffd21f';
-  ctx.strokeText(text, 480, 36); ctx.fillText(text, 480, 36);
+  ctx.font = 'bold 15px sans-serif';
+  let shown = text;
+  while (shown.length > 1 && ctx.measureText(shown).width > 592) shown = shown.slice(0, -2).trimEnd() + '\u2026';
+  const pw = Math.min(620, ctx.measureText(shown).width + 28);
+  ctx.fillStyle = 'rgba(8,8,14,0.55)'; ctx.fillRect(480 - pw / 2, 16, pw, 28);
+  ctx.fillStyle = '#ffd21f';
+  ctx.fillText(shown, 480, 35);
   const t = missions.target, focus = p.car || p;
   if (t && camera) {
     const fx = focus.x - WORLD_W / 2 - camera.position.x, fz = focus.y - WORLD_H / 2 - camera.position.z;

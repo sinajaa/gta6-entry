@@ -12,6 +12,8 @@ const COP_COLOR = '#2456c4';
 const HALF_PI = Math.PI / 2;
 
 const COP_QUIET_SECONDS = 0.5;
+const GRADE_FILTER = 'contrast(1.40) saturate(1.22) brightness(1.02)';
+const BLACK_FLOOR = 'rgb(22,22,26)';
 
 function seedRandom() {
   let s = SEED;
@@ -77,7 +79,7 @@ function placePeds(c, spots) {
 
 const SHOTS = {
   street: {
-    light: { hemi: 0.12, ambient: 0.03, sun: 14, exposure: 2.6, sunColor: '#ffb066', sunDir: [-700, 170, -120], hemiSky: '#7f9cc8', hemiGnd: '#2a1c14' },
+    light: { hemi: 0.12, ambient: 0.03, sun: 16, exposure: 2.75, sunColor: '#ffb066', sunDir: [-700, 140, -120], hemiSky: '#7f9cc8', hemiGnd: '#2a1c14' },
     hour: 17.5,
     setup(c) {
       const { player, world, police } = c;
@@ -105,7 +107,7 @@ const SHOTS = {
   },
 
   chase: {
-    light: { hemi: 0.15, ambient: 0.03, sun: 14, exposure: 2.8, sunColor: '#b8ccff', sunDir: [-500, 260, -200], hemiSky: '#6a7fb8', hemiGnd: '#1a1a24' },
+    light: { hemi: 0.15, ambient: 0.03, sun: 14, exposure: 1.2, sunColor: '#b8ccff', sunDir: [-500, 260, -200], hemiSky: '#6a7fb8', hemiGnd: '#1a1a24' },
     hour: 21,
     setup(c) {
       const car = freeCars(c)[0];
@@ -129,7 +131,7 @@ const SHOTS = {
   },
 
   firefight: {
-    light: { hemi: 0.05, ambient: 0.0, sun: 40, exposure: 2.0, sunColor: '#ff9a5a', sunDir: [-650, 120, 250], hemiSky: '#8a72b0', hemiGnd: '#241418' },
+    light: { hemi: 0.05, ambient: 0.0, sun: 40, exposure: 1.5, sunColor: '#ff9a5a', sunDir: [-650, 120, 250], hemiSky: '#8a72b0', hemiGnd: '#241418' },
     hour: 18.9,
     setup(c) {
       const { player, combat, world } = c;
@@ -193,7 +195,7 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
   const def = SHOTS[NAME];
   if (!def) return null;
   const c = { world, player, police, peds, gfx, combat, keys, ui, pinWanted: false };
-  let ready = false, hooked = false;
+  let ready = false, hooked = false, floorEl = null;
   setHour(gfx, def.hour);
   const applyLight = () => {
     const L = def.light;
@@ -203,6 +205,12 @@ export function createShot({ world, player, police, peds, gfx, combat, keys, ui 
     if (L.sunColor) gfx.sun.color.set(L.sunColor);
     if (L.hemiSky) gfx.hemi.color.set(L.hemiSky);
     if (L.hemiGnd) gfx.hemi.groundColor.set(L.hemiGnd);
+    gfx.renderer.domElement.style.filter = def.filter || GRADE_FILTER;
+    if (!floorEl) {
+      floorEl = document.createElement('div');
+      floorEl.style.cssText = `position:absolute;inset:0;pointer-events:none;mix-blend-mode:lighten;background:${BLACK_FLOOR}`;
+      gfx.hud.canvas.parentNode.appendChild(floorEl);
+    }
   };
   if (def.light && def.light.sunDir) gfx.sunDirOverride = new THREE.Vector3(...def.light.sunDir);
   let elapsed = 0;
