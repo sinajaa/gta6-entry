@@ -1,5 +1,7 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
 // Menu, HUD, dan penyimpanan lokal ditulis sendiri untuk game ini.
+import { normalizeStanding } from './standing.js';
+
 const SAVE_KEY = 'sunnycity.save.v1';
 const W = 960, H = 540, TOAST_SECONDS = 2;
 export const GARAGE_ROWS = { x: 330, w: 300, top: 205, step: 52, h: 44 };
@@ -25,6 +27,8 @@ export function createUI(hud) {
     missionsDone: saved && Number.isFinite(saved.missionsDone) ? saved.missionsDone : 0,
     pkMask: saved && Number.isFinite(saved.pkMask) ? saved.pkMask : 0,
     pkCount: 0, pkTotal: 12, station: null, stationT: 0, garageMenu: null,
+    standing: normalizeStanding(saved && saved.standing),
+    standingHud: null,
     wanted: 0,
     hasSave: !!saved,
     toasts: [],
@@ -32,7 +36,7 @@ export function createUI(hud) {
     addMoney(n) { ui.money += n; ui.toast((n >= 0 ? '+ $' : '- $') + Math.abs(n)); },
     save() {
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ money: ui.money, missionsDone: ui.missionsDone, pkMask: ui.pkMask, wanted: ui.wanted, savedAt: Date.now() }));
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ money: ui.money, missionsDone: ui.missionsDone, pkMask: ui.pkMask, standing: ui.standing, wanted: ui.wanted, savedAt: Date.now() }));
       } catch (e) { /* storage tidak tersedia */ }
     },
     handleKey(e) {
@@ -98,7 +102,23 @@ function drawPlaying(ctx, ui) {
   ctx.restore();
   drawWeapon(ctx, ui);
   drawHitmarker(ctx, ui);
+  drawStanding(ctx, ui);
   drawGarage(ctx, ui);
+}
+
+function drawStanding(ctx, ui) {
+  const s = ui.standingHud;
+  if (!s) return;
+  const x = 20, y = 523;
+  ctx.save();
+  ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  const label = s.name + ' ' + Math.round(s.value);
+  ctx.strokeText(label, x, y + 9); ctx.fillStyle = s.shield ? '#7fe3ff' : '#e8e8e8'; ctx.fillText(label, x, y + 9);
+  const bx = x + 90, bw = 38;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx, y + 2, bw, 8);
+  ctx.fillStyle = s.shield ? '#4fd0ff' : '#ffb347'; ctx.fillRect(bx + 1, y + 3, (bw - 2) * s.value / 100, 6);
+  ctx.restore();
 }
 
 function drawGarage(ctx, ui) {

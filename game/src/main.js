@@ -6,6 +6,7 @@ import { updateCamera3D, createMenuCamera, updateMenuCamera, beginMenuBlend, ble
 import { initRenderer, renderFrame } from './render3d.js';
 import { createPolice, addHeat, updateWanted, updatePolice } from './police.js';
 import { createUI } from './ui.js';
+import { createStanding, DISTRICT_NAMES } from './standing.js';
 import { createPeds, updatePeds, alarmPeds } from './peds.js';
 import { createAudio } from './audio.js';
 import { createMissions } from './missions.js';
@@ -35,6 +36,7 @@ let crashCooldown = 0;
 const gfx = initRenderer(canvas, document.getElementById('hud'), world);
 const keys = new Set();
 const ui = createUI(document.getElementById('hud'));
+ui.rep = createStanding(ui);
 const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 const SIREN_RANGE = 600;
@@ -172,6 +174,10 @@ function frame(now) {
   extras.update(dt);
   setRadioKey();
   updateTraffic(world, dt);
+  const rep = ui.rep, there = player.car || player;
+  rep.update(dt, there.x, there.y);
+  police.shield = rep.shield(there.x, there.y);
+  ui.standingHud = rep.visible && !interiors.active ? { name: DISTRICT_NAMES[rep.cur], value: ui.standing[rep.cur], shield: police.shield } : null;
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
   if (police.stars >= 3) {

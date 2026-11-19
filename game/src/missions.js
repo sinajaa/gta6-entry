@@ -286,6 +286,7 @@ export function createMissions(world, ui, audio) {
     say(a.def.who, a.def.win);
     ui.missionsDone++;
     m.done++;
+    if (ui.rep) ui.rep.add(m.focus.x, m.focus.y, 10);
     audio.complete();
     cursor = (MISSION_LIST.indexOf(a.def) + 1) % MISSION_LIST.length;
     cleanup();

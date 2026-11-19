@@ -123,14 +123,18 @@ export function createInteriors({ world, player, ui, gfx, combat }) {
       door.rotation.y = -1.2; door.position.x -= 14; door.position.z += 10;
       ui.addMoney(VAULT_CASH);
     } else if (s.id === 'ammo') {
-      if (ui.money < AMMO_PRICE) { ui.toast('Uang kurang ($' + AMMO_PRICE + ')'); return; }
-      ui.addMoney(-AMMO_PRICE);
+      const door = doors[it.current], rep = ui.rep;
+      const price = rep ? rep.price(AMMO_PRICE, door.x, door.y) : AMMO_PRICE;
+      if (ui.money < price) { ui.toast('Uang kurang ($' + price + ')'); return; }
+      ui.addMoney(-price);
       if (combat) refill(combat.ammo);
+      if (rep) rep.add(door.x, door.y, 2);
       ui.toast('AMMO +');
     } else if (s.id === 'meal') {
       if (player.health >= player.maxHealth) { ui.toast('HP sudah penuh'); return; }
       if (ui.money < MEAL_PRICE) { ui.toast('Uang kurang ($' + MEAL_PRICE + ')'); return; }
       ui.addMoney(-MEAL_PRICE);
+      if (ui.rep) ui.rep.add(doors[it.current].x, doors[it.current].y, 1);
       player.health = player.maxHealth;
       ui.toast('HP pulih');
     }
@@ -171,7 +175,8 @@ export function createInteriors({ world, player, ui, gfx, combat }) {
       return false;
     }
     const s = nearSpot();
-    ui.prompt = s ? (s.id === 'vault' && it.vaultOpen ? null : s.label) : nearExit() ? 'E: keluar' : null;
+    const door = doors[it.current];
+    ui.prompt = s ? (s.id === 'vault' && it.vaultOpen ? null : s.id === 'ammo' && ui.rep ? 'E: beli ammo $' + ui.rep.price(AMMO_PRICE, door.x, door.y) : s.label) : nearExit() ? 'E: keluar' : null;
     const k = (n) => keys.has(n);
     let ix = (k('d') || k('arrowright') ? 1 : 0) - (k('a') || k('arrowleft') ? 1 : 0);
     let iy = (k('s') || k('arrowdown') ? 1 : 0) - (k('w') || k('arrowup') ? 1 : 0);

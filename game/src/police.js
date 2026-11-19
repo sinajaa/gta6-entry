@@ -57,7 +57,7 @@ export function updateWanted(state, player, dt) {
     state.evadeTimer = EVADE_SECONDS[state.stars - 1];
     return;
   }
-  state.evadeTimer -= dt;
+  state.evadeTimer -= state.shield ? dt * 2 : dt;
   if (state.evadeTimer > 0) return;
   const lowered = state.stars - 1;
   state.heat = lowered > 0 ? (lowered - 1) * 100 + 50 : 0;

@@ -263,12 +263,14 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       }
       const heat = cop ? (kill ? 80 : 30) : target.driver === 'npc' || mission ? (kill ? 40 : 15) : 5;
       addHeat(world, heat, cop ? 'shoot cop' : 'shoot car');
+      if (cop && kill && ui.rep) ui.rep.add(target.x, target.y, 4);
       markHit(hit.x, hit.y, kill);
     } else if (hit.kind === 'ped') {
       target.hp = (target.hp ?? PED_HP) - dmg;
       const kill = target.hp <= 0;
       alarmPeds(peds, hit.x, hit.y, 200);
       addHeat(world, kill ? 35 : 15, 'shoot ped');
+      if (ui.rep) ui.rep.add(target.x, target.y, kill ? -5 : -1);
       if (kill) { target.hp = PED_HP; target.x = -5000; target.y = -5000; }
       addSparks(hit.x, hit.y, 3);
       markHit(hit.x, hit.y, kill);

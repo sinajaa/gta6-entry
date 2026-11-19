@@ -43,9 +43,19 @@ function layoutLots(x0, y0, rand) {
   return halves.flatMap((h) => splitRect(h, other, rand));
 }
 
-function districtFloors(bx, by, rand) {
+// 0 = pusat, 1 = tengah, 2 = pinggir
+export function districtOfBlock(bx, by) {
   const dist = Math.hypot(bx - (BLOCKS - 1) / 2, by - (BLOCKS - 1) / 2);
-  const [lo, hi] = dist < 2.2 ? [3, 6] : dist < 3.6 ? [2, 4] : [1, 2];
+  return dist < 2.2 ? 0 : dist < 3.6 ? 1 : 2;
+}
+
+export function districtAt(x, y) {
+  const span = PERIOD * TILE, last = BLOCKS - 1;
+  return districtOfBlock(Math.max(0, Math.min(last, Math.floor(x / span))), Math.max(0, Math.min(last, Math.floor(y / span))));
+}
+
+function districtFloors(bx, by, rand) {
+  const [lo, hi] = [[3, 6], [2, 4], [1, 2]][districtOfBlock(bx, by)];
   return lo + Math.floor(rand() * (hi - lo + 1));
 }
 

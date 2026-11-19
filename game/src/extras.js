@@ -160,9 +160,12 @@ export function createExtras({ world, player, ui, audio, gfx }) {
     if (!open) { ui.garageMenu = null; armed = false; }
   }
 
-  function spend(price) {
+  const priceOf = (base) => (ui.rep ? ui.rep.price(base, GARAGE.x, GARAGE.y) : base);
+  function spend(base) {
+    const price = priceOf(base);
     if (ui.money < price) { ui.toast('Uang tidak cukup'); return false; }
     ui.addMoney(-price);
+    if (ui.rep) ui.rep.add(GARAGE.x, GARAGE.y, 2);
     ui.save();
     return true;
   }
@@ -227,9 +230,9 @@ export function createExtras({ world, player, ui, audio, gfx }) {
         hp: Math.round(clamp(((car.hp ?? max) / max) * 100, 0, 100)),
         color: car.color, nitro: !!car.nitro,
         items: [
-          { key: '1', label: 'Perbaiki mobil', price: PRICE.repair },
-          { key: '2', label: 'Cat ulang acak', price: PRICE.paint },
-          { key: '3', label: 'Pasang nitro', price: PRICE.nitro },
+          { key: '1', label: 'Perbaiki mobil', price: priceOf(PRICE.repair) },
+          { key: '2', label: 'Cat ulang acak', price: priceOf(PRICE.paint) },
+          { key: '3', label: 'Pasang nitro', price: priceOf(PRICE.nitro) },
         ],
       };
     }
