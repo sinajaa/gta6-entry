@@ -4,9 +4,9 @@ import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';
 
 const GROUND_COLORS = { [T.ROAD]: '#9aa0a6', [T.SIDEWALK]: '#d9d2c3', [T.GRASS]: '#8fc16a', [T.BUILDING]: '#8c8173' };
-const HORIZON = 0xffd9a0;
-const SHADOW_HALF = 420;
-const SUN_OFFSET = new THREE.Vector3(-700, 900, -500);
+const HORIZON = 0xf6c48c;
+const SHADOW_HALF = 560;
+const SUN_OFFSET = new THREE.Vector3(-900, 420, -500);
 const ROOF_BOOST = 1.25;
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
@@ -24,8 +24,10 @@ function makeSkyTexture() {
   canvas.width = 4; canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#5aa9e6');
-  g.addColorStop(1, '#ffd9a0');
+  g.addColorStop(0, '#2f5f9e');
+  g.addColorStop(0.18, '#7fa6c9');
+  g.addColorStop(0.27, '#f6c48c');
+  g.addColorStop(1, '#f6c48c');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 4, 256);
   const texture = new THREE.CanvasTexture(canvas);
@@ -67,18 +69,18 @@ export function initRenderer(canvas, hudCanvas, world) {
   renderer.shadowMap.type = software ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
   scene.background = makeSkyTexture();
-  scene.fog = new THREE.Fog(HORIZON, 700, 2000);
-  scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x9a8a6a, 1.15));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+  scene.fog = new THREE.Fog(HORIZON, 350, 1500);
+  scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x9a8a6a, 0.9));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
   const shadowSize = renderer.capabilities.isWebGL2 ? 2048 : 1024;
-  const sun = new THREE.DirectionalLight(0xffe6b8, 3.0);
-  sun.position.set(-700, 900, -500);
+  const sun = new THREE.DirectionalLight(0xffc890, 2.6);
+  sun.position.copy(SUN_OFFSET);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = !software;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -87,7 +89,7 @@ export function initRenderer(canvas, hudCanvas, world) {
   Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 100, far: 1800 });
   scene.add(sun, sun.target);
 
-  const camera = new THREE.PerspectiveCamera(46, 960 / 540, 1, 2600);
+  const camera = new THREE.PerspectiveCamera(48, 960 / 540, 3, 1700);
   const gfx = { renderer, scene, camera, sun, software, shadowSize, frameNo: 0, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1 };
   buildWorldMeshes(gfx, world);
   buildCombatFx(gfx);
@@ -189,7 +191,7 @@ export function syncCombat(gfx, combat) {
   });
 }
 
-export function makeGroundTexture(world, renderer) {
+export function makeGroundTexture(world, renderer, software = false) {
   const size = 2048;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
@@ -219,6 +221,32 @@ export function makeGroundTexture(world, renderer) {
     }
   }
 
+  if (software) {
+    const sh = document.createElement('canvas');
+    sh.width = sh.height = size;
+    const sc = sh.getContext('2d');
+    sc.scale(size / WORLD_W, size / WORLD_H);
+    sc.fillStyle = '#000';
+    const k = Math.hypot(900, 500) / 420, ux = 900 / Math.hypot(900, 500), uy = 500 / Math.hypot(900, 500);
+    for (const b of world.buildings) {
+      const dx = ux * k * b.height, dy = uy * k * b.height;
+      const pts = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
+      sc.fillRect(b.x, b.y, b.w, b.h);
+      sc.fillRect(b.x + dx, b.y + dy, b.w, b.h);
+      for (let i = 0; i < 4; i++) {
+        const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % 4];
+        sc.beginPath();
+        sc.moveTo(ax, ay); sc.lineTo(bx, by); sc.lineTo(bx + dx, by + dy); sc.lineTo(ax + dx, ay + dy);
+        sc.closePath(); sc.fill();
+      }
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(sh, 0, 0);
+    ctx.restore();
+  }
+
   for (const p of world.parks) {
     ctx.fillStyle = '#7ab25a';
     ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -242,7 +270,7 @@ export function makeGroundTexture(world, renderer) {
 export function buildWorldMeshes(gfx, world) {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(WORLD_W, WORLD_H),
-    new THREE.MeshLambertMaterial({ map: makeGroundTexture(world, gfx.renderer) }),
+    new THREE.MeshLambertMaterial({ map: makeGroundTexture(world, gfx.renderer, gfx.software) }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -256,6 +284,14 @@ export function buildWorldMeshes(gfx, world) {
       : new THREE.MeshStandardMaterial({ map: facade, roughness: 0.85, metalness: 0.0 }),
     world.buildings.length,
   );
+  buildings.material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+#ifdef USE_MAP
+  vec3 bsz = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  float horiz = abs(normal.x) > 0.5 ? bsz.z : bsz.x;
+  vMapUv = (mapTransform * vec3(uv.x * horiz / 256.0, uv.y * bsz.y / 128.0, 1.0)).xy;
+#endif`);
+  };
   const matrix = new THREE.Matrix4(), color = new THREE.Color();
   world.buildings.forEach((b, i) => {
     matrix.compose(
@@ -292,12 +328,9 @@ export function buildWorldMeshes(gfx, world) {
   gfx.scene.add(roofs);
 
   buildRoadMarkings(gfx);
+  buildStreetDetail(gfx, world);
 
-  const cars = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(CAR_SIZE.length, CAR_SIZE.height, CAR_SIZE.width),
-    new THREE.MeshLambertMaterial(),
-    MAX_CARS,
-  );
+  const cars = new THREE.InstancedMesh(buildCarGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), MAX_CARS);
   cars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   cars.frustumCulled = false;
   cars.castShadow = cars.receiveShadow = true;
@@ -337,6 +370,17 @@ export function buildWorldMeshes(gfx, world) {
   buildHeli(gfx);
   buildProps(gfx, world);
   buildMissionMarkers(gfx);
+}
+
+function buildCarGeometry() {
+  const wheel = (x, z) => ({ geo: new THREE.CylinderGeometry(4, 4, 4, 10).rotateX(Math.PI / 2).translate(x, -5, z), color: '#15171a' });
+  return mergeColored([
+    { geo: new THREE.BoxGeometry(56, 11, 22).translate(0, -3.5, 0), color: '#ffffff' },
+    { geo: new THREE.BoxGeometry(28, 7, 18).translate(-4, 5.5, 0), color: '#6f8aa8' },
+    wheel(17, 10), wheel(17, -10), wheel(-17, 10), wheel(-17, -10),
+    { geo: new THREE.BoxGeometry(1.5, 3, 5).translate(28.2, -2, 7), color: '#fff2b0' },
+    { geo: new THREE.BoxGeometry(1.5, 3, 5).translate(28.2, -2, -7), color: '#fff2b0' },
+  ]);
 }
 
 const MARKER_MAX = 4, MARKER_RADIUS = 14, MARKER_HEIGHT = 120;
@@ -607,6 +651,50 @@ function syncTrafficLights(gfx, world) {
   t.mesh.instanceColor.needsUpdate = true;
 }
 
+function buildStreetDetail(gfx, world) {
+  const items = [];
+  const BLOCKS = COLS / 10, P = 10 * TILE;
+  const SIDE = [
+    { edge: (b) => b.x, ok: (b) => (b.x / TILE) % 10 === 3, nx: -1, nz: 0, len: (b) => b.h, cx: (b) => b.x, cz: (b) => b.y + b.h / 2 },
+    { edge: (b) => b.x + b.w, ok: (b) => ((b.x + b.w) / TILE) % 10 === 9, nx: 1, nz: 0, len: (b) => b.h, cx: (b) => b.x + b.w, cz: (b) => b.y + b.h / 2 },
+    { ok: (b) => (b.y / TILE) % 10 === 3, nx: 0, nz: -1, len: (b) => b.w, cx: (b) => b.x + b.w / 2, cz: (b) => b.y },
+    { ok: (b) => ((b.y + b.h) / TILE) % 10 === 9, nx: 0, nz: 1, len: (b) => b.w, cx: (b) => b.x + b.w / 2, cz: (b) => b.y + b.h },
+  ];
+  for (const b of world.buildings) {
+    for (const s of SIDE) {
+      if (!s.ok(b)) continue;
+      const L = s.len(b) - 8, alongX = s.nz !== 0;
+      const wx = s.cx(b) - WORLD_W / 2, wz = s.cz(b) - WORLD_H / 2;
+      items.push({ x: wx + s.nx * 0.6, y: 11, z: wz + s.nz * 0.6, sx: alongX ? L : 1.2, sy: 18, sz: alongX ? 1.2 : L, color: '#3b536b' });
+      items.push({ x: wx + s.nx * 3.5, y: 23, z: wz + s.nz * 3.5, sx: alongX ? L : 7, sy: 3, sz: alongX ? 7 : L, color: ['#c0392b', '#2e7d6b', '#d9a21b', '#3a62b3'][Math.floor(b.x / TILE + b.y / TILE) % 4] });
+    }
+  }
+  const detail = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial(), items.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+  items.forEach((it, i) => {
+    detail.setMatrixAt(i, m.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.sx, it.sy, it.sz)));
+    detail.setColorAt(i, c.set(it.color));
+  });
+  detail.instanceMatrix.needsUpdate = detail.instanceColor.needsUpdate = true;
+  detail.frustumCulled = false;
+  gfx.scene.add(detail);
+
+  const kerbs = [];
+  for (let i = 0; i < BLOCKS; i++) {
+    for (let j = 0; j < BLOCKS; j++) {
+      const x0 = i * P + 2 * TILE, y0 = j * P + 2 * TILE, span = 8 * TILE;
+      const cx = x0 + span / 2 - WORLD_W / 2, cz = y0 + span / 2 - WORLD_H / 2;
+      kerbs.push([cx, y0 + 1.5 - WORLD_H / 2, span, 3], [cx, y0 + span - 1.5 - WORLD_H / 2, span, 3]);
+      kerbs.push([x0 + 1.5 - WORLD_W / 2, cz, 3, span], [x0 + span - 1.5 - WORLD_W / 2, cz, 3, span]);
+    }
+  }
+  const kerbMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 3, 1), new THREE.MeshLambertMaterial({ color: 0xcfc8b8 }), kerbs.length);
+  kerbs.forEach(([x, z, w, d], i) => kerbMesh.setMatrixAt(i, m.compose(new THREE.Vector3(x, 1.5, z), q, new THREE.Vector3(w, 1, d))));
+  kerbMesh.instanceMatrix.needsUpdate = true;
+  kerbMesh.frustumCulled = false;
+  gfx.scene.add(kerbMesh);
+}
+
 function buildRoadMarkings(gfx) {
   const marks = [];
   const BLOCKS = COLS / 10, PERIOD_U = 10 * TILE, ROAD_U = 2 * TILE;
@@ -633,13 +721,13 @@ function buildRoadMarkings(gfx) {
   }
   const mesh = new THREE.InstancedMesh(
     new THREE.PlaneGeometry(1, 1),
-    new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
     marks.length,
   );
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
   marks.forEach(([x, z, w, d], i) => {
-    m.compose(new THREE.Vector3(x, 0.06, z), q, new THREE.Vector3(w, d, 1));
+    m.compose(new THREE.Vector3(x, 0.25, z), q, new THREE.Vector3(w, d, 1));
     mesh.setMatrixAt(i, m);
   });
   mesh.instanceMatrix.needsUpdate = true;
@@ -758,7 +846,7 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
 const hudProj = new THREE.Vector3();
 function drawCombatHud(ctx, p, camera, combat) {
   if (combat.vignette > 0) {
-    const a = Math.min(1, combat.vignette / 0.35) * 0.55;
+    const a = Math.min(1, combat.vignette / 0.35) * 0.22;
     const g = ctx.createRadialGradient(480, 270, 180, 480, 270, 620);
     g.addColorStop(0, 'rgba(220,0,0,0)');
     g.addColorStop(1, `rgba(220,0,0,${a.toFixed(3)})`);
@@ -784,7 +872,7 @@ function drawCombatHud(ctx, p, camera, combat) {
   }
 }
 
-const MAP_SIZE = 320, MAP_R = 75, MAP_VIEW = 700, MAP_CX = 20 + MAP_R, MAP_CY = 540 - 20 - MAP_R;
+const MAP_SIZE = 320, MAP_R = 60, MAP_VIEW = 700, MAP_CX = 20 + MAP_R, MAP_CY = 540 - 20 - MAP_R;
 let baseMap = null;
 function getBaseMap(world) {
   if (baseMap) return baseMap;
@@ -836,8 +924,23 @@ function bar(ctx, x, y, w, h, frac, fill, back = 'rgba(0,0,0,0.55)') {
   ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, Math.max(0, (w - 2) * Math.min(1, Math.max(0, frac))), h - 2);
 }
 
+let vignetteCanvas = null;
+function getVignette() {
+  if (vignetteCanvas) return vignetteCanvas;
+  vignetteCanvas = document.createElement('canvas');
+  vignetteCanvas.width = 960; vignetteCanvas.height = 540;
+  const c = vignetteCanvas.getContext('2d');
+  const g = c.createRadialGradient(480, 270, 300, 480, 270, 620);
+  g.addColorStop(0, 'rgba(30,15,0,0)');
+  g.addColorStop(1, 'rgba(30,15,0,0.35)');
+  c.fillStyle = g; c.fillRect(0, 0, 960, 540);
+  c.fillStyle = 'rgba(255,160,60,0.05)'; c.fillRect(0, 0, 960, 540);
+  return vignetteCanvas;
+}
+
 export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
   ctx.clearRect(0, 0, 960, 540);
+  ctx.drawImage(getVignette(), 0, 0);
   const car = p.car;
   const debug = typeof location !== 'undefined' && location.search.includes('debug');
   police = police || world.police;
@@ -845,7 +948,7 @@ export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
   if (missions) drawMission(ctx, p, missions, camera);
 
   if (police && police.stars >= 3) {
-    const pulse = 0.28 + 0.12 * Math.sin(world.time * 6);
+    const pulse = 0.14 + 0.08 * Math.sin(world.time * 6);
     const g = ctx.createRadialGradient(480, 270, 270, 480, 270, 600);
     g.addColorStop(0, 'rgba(200,0,0,0)');
     g.addColorStop(1, `rgba(200,0,0,${pulse.toFixed(3)})`);
@@ -866,7 +969,7 @@ export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
 
   if (car) {
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 32px sans-serif';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
     ctx.fillText(String(Math.round(Math.abs(car.speed) * 0.36)), 930, 500);
     ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#ddd';
@@ -876,13 +979,13 @@ export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
 
   if (!car && nearestEnterable(world, p)) {
     ctx.fillStyle = 'rgba(20,20,20,0.7)';
-    ctx.fillRect(380, 490, 200, 28);
-    ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('E: masuk mobil', 480, 508);
+    ctx.fillRect(410, 500, 140, 20);
+    ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('E: masuk mobil', 480, 514);
     ctx.textAlign = 'left';
   } else if (car) {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '12px sans-serif';
-    ctx.fillText('E: keluar', 190, 524);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '10px sans-serif';
+    ctx.fillText('E: keluar', 20 + MAP_R * 2 + 10, 524);
   }
 
   if (debug) {
@@ -925,8 +1028,8 @@ function drawMission(ctx, p, missions, camera) {
   if (!text) return;
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.font = 'bold 22px sans-serif';
-  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#ffd21f';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#ffd21f';
   ctx.strokeText(text, 480, 36); ctx.fillText(text, 480, 36);
   const t = missions.target, focus = p.car || p;
   if (t && camera) {
@@ -937,6 +1040,7 @@ function drawMission(ctx, p, missions, camera) {
     const a = Math.atan2(side, ahead);
     ctx.translate(480 + Math.sin(a) * 400, 290 - Math.cos(a) * 200);
     ctx.rotate(a);
+    ctx.scale(0.8, 0.8);
     ctx.fillStyle = '#ffd21f'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(10, 10); ctx.lineTo(0, 4); ctx.lineTo(-10, 10); ctx.closePath();
     ctx.fill(); ctx.stroke();

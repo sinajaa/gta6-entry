@@ -1,5 +1,5 @@
 // camera.js — kamera chase 3D dan zoom saat mengemudi
-import { WORLD_W, WORLD_H } from "./world.js";
+import { WORLD_W, WORLD_H, TILE, COLS, ROWS } from "./world.js";
 const WORLD_W_HALF = WORLD_W / 2, WORLD_H_HALF = WORLD_H / 2;
 const DRIVE_ZOOM = 0.75;
 
@@ -21,11 +21,34 @@ export function updateCamera(cam, target, world, dt, driving = false) {
   cam.y = Math.max(0, Math.min(world.height - cam.visH, cam.y));
 }
 
-const WALK = { up: 250, back: 360, fov: 46, lookY: 80 };
-const DRIVE = { up: 310, back: 490, fov: 52, lookY: 80 };
+const WALK = { up: 170, back: 520, fov: 48, lookY: 60 };
+const DRIVE = { up: 200, back: 600, fov: 52, lookY: 55 };
+const MIN_DIST = 14, RAY_STEP = 8, RAY_SIDE = 10, RAY_MARGIN = 4;
+
+let heightGrid = null;
+function buildHeightGrid(world) {
+  heightGrid = new Uint16Array(COLS * ROWS);
+  for (const b of world.buildings) {
+    for (let y = b.y / TILE; y < (b.y + b.h) / TILE; y++) for (let x = b.x / TILE; x < (b.x + b.w) / TILE; x++) heightGrid[y * COLS + x] = b.height;
+  }
+}
+function blockedAt(x, z, y) {
+  const gx = Math.floor((x + WORLD_W_HALF) / TILE), gz = Math.floor((z + WORLD_H_HALF) / TILE);
+  if (gx < 0 || gz < 0 || gx >= COLS || gz >= ROWS) return false;
+  return heightGrid[gz * COLS + gx] > y - RAY_MARGIN;
+}
+// jarak dari titik look sepanjang arah (dx,dz) sampai kena bangunan; Infinity bila bebas
+function firstHit(lx, ly, lz, dx, dz, len, camY, offset) {
+  const px = -dz * offset, pz = dx * offset;
+  for (let s = RAY_STEP; s <= len; s += RAY_STEP) {
+    const y = ly + (camY - ly) * (s / len);
+    if (blockedAt(lx + px + dx * s, lz + pz + dz * s, y)) return s;
+  }
+  return Infinity;
+}
 const DOLLY_MAX = 90, SPEED_MAX = 320, EDGE_MARGIN = 200;
 
-export function updateCamera3D(cam3d, actor, mode, dt) {
+export function updateCamera3D(cam3d, actor, mode, dt, world) {
   const driving = mode === 'drive';
   const o = driving ? DRIVE : WALK;
   const dolly = driving ? DOLLY_MAX * Math.min(1, Math.abs(actor.speed) / SPEED_MAX) : 0;
@@ -51,6 +74,28 @@ export function updateCamera3D(cam3d, actor, mode, dt) {
   state.look.x += (tx - state.look.x) * 0.25;
   state.look.y += (o.lookY - state.look.y) * 0.25;
   state.look.z += (tz - state.look.z) * 0.25;
+
+  let hx = cam3d.position.x - state.look.x, hz = cam3d.position.z - state.look.z;
+  const len = Math.hypot(hx, hz) || 1;
+  hx /= len; hz /= len;
+  if (world) {
+    if (!heightGrid) buildHeightGrid(world);
+    let hit = Infinity;
+    for (const off of [0, RAY_SIDE, -RAY_SIDE]) hit = Math.min(hit, firstHit(state.look.x, state.look.y, state.look.z, hx, hz, len, cam3d.position.y, off));
+    if (hit !== Infinity) {
+      const dist = Math.max(MIN_DIST, hit - RAY_STEP);
+      const shortfall = Math.max(0, MIN_DIST - (hit - RAY_STEP));
+      cam3d.position.x = state.look.x + hx * dist;
+      cam3d.position.z = state.look.z + hz * dist;
+      cam3d.position.y += shortfall * 0.3;
+    }
+  }
+  const px = cam3d.position.x - tx, pz = cam3d.position.z - tz, pd = Math.hypot(px, pz);
+  if (pd < MIN_DIST) {
+    const f = pd > 0.001 ? MIN_DIST / pd : 0;
+    cam3d.position.x = tx + (pd > 0.001 ? px * f : hx * MIN_DIST);
+    cam3d.position.z = tz + (pd > 0.001 ? pz * f : hz * MIN_DIST);
+  }
   cam3d.lookAt(state.look);
   if (Math.abs(cam3d.fov - o.fov) > 0.01) {
     cam3d.fov += (o.fov - cam3d.fov) * 0.15;

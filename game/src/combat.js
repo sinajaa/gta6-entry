@@ -59,6 +59,7 @@ function rayCircle(px, py, r, ox, oy, dx, dy) {
   return t >= 0 ? t : (along >= 0 ? 0 : null);
 }
 
+const AIM_MAX = 600;
 function makePool(n, make) { return Array.from({ length: n }, make); }
 
 export function createCombat({ gfx, world, player, police, peds, ui, missions }) {
@@ -66,7 +67,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
   player.maxHealth = MAX_HEALTH;
 
   const raycaster = new THREE.Raycaster();
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -14);
   const ndc = new THREE.Vector2();
   const hitPoint = new THREE.Vector3();
   const proj = new THREE.Vector3();
@@ -173,8 +174,10 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     ndc.set(c.mouse.x / 960 * 2 - 1, -(c.mouse.y / 540 * 2 - 1));
     raycaster.setFromCamera(ndc, camera);
     if (raycaster.ray.intersectPlane(plane, hitPoint)) {
-      c.aim.x = hitPoint.x + WORLD_W / 2;
-      c.aim.y = hitPoint.z + WORLD_H / 2;
+      let ax = hitPoint.x + WORLD_W / 2, ay = hitPoint.z + WORLD_H / 2;
+      const d = Math.hypot(ax - player.x, ay - player.y);
+      if (d > AIM_MAX) { ax = player.x + (ax - player.x) * AIM_MAX / d; ay = player.y + (ay - player.y) * AIM_MAX / d; }
+      c.aim.x = ax; c.aim.y = ay;
     }
   }
 

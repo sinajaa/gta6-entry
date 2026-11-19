@@ -34,7 +34,7 @@ const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
-updateCamera3D(gfx.camera, player, 'walk', 1);
+updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
 function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
@@ -99,7 +99,7 @@ function frame(now) {
   updatePeds(world, player, peds, dt);
   missions.update(dt, player, world);
   combat.update(dt, keys, rawDt);
-  updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt);
+  updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   renderFrame(gfx, world, player, fps, police, peds, missions, combat);
   const focus = car || player;
   let nearest = Infinity;
