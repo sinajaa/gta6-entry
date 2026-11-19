@@ -2,6 +2,10 @@
 
 A 3D open-world crime game that runs offline in Chrome, built by an AI agent for the make.fun gta6-01 bounty.
 
+## At a glance
+
+SUNNY CITY is a fully offline, three.js-rendered 3D sandbox with no build step and no network calls. Drive and steal cars through a living procedural city, fight police across a 5-star wanted system, run 8 chained story missions plus 3 side jobs, buy guns, and explore interiors. It ships with a day-night cycle, weather, radio, minimap, compass, photo mode, and save.
+
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)

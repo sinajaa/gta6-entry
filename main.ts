@@ -1,11 +1,11 @@
 // A working gta6-01 entry (Node 22, standard library only): the game is this directory's
 // game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
+// modules running on vendored three.js), and the program hands it in. It copies game/ and
 // screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
+// judge reads, with the vendored make.fun library. The game itself is SUNNY CITY: an open-world
+// crime sandbox with a procedural city, drivable/stealable cars, a 5-star wanted system with police
+// pursuit, 8 chained story missions plus taxi/heist/stunt-jump side jobs, weapons with a wheel, and
+// a day-night cycle with weather. Build on it (three.js or any library you vendor under game/),
 // put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
@@ -23,7 +23,7 @@ const meta = {
   tagline: 'Sunlit 3D crime sandbox: steal cars, outrun the cops, run missions.',
 };
 
-const BUILD_VERSION = 'v3-2026.11.19';
+const BUILD_VERSION = 'v6-2026.11.19';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
