@@ -1,8 +1,14 @@
 // audio.js — efek suara sintetis WebAudio; AudioContext baru dibuat setelah gesture
 // Suara game disusun dengan tangan sendiri lewat WebAudio, tanpa berkas audio luar.
+// Lapisan: music director adaptif (bass/chord/drum per heat + distrik), engine & ban
+// yang mengikuti kecepatan dengan pitching doppler-ish, senjata per jenis + reverb ekor,
+// ambience kota (trafik jauh + burung camar dekat air), dan guntur yang menyusul kilat.
 export function createAudio() {
   let ac = null, master = null, muted = false, failed = false;
   let sirenGain = null, sirenOsc = [], sirenTimer = 0, sirenIntensity = 0, sirenHigh = false;
+
+  // State adaptif dibaca oleh music director tiap tick.
+  const ctx = { heat: 0, district: 0, speed: 0, water: 0, time: 0 };
 
   const safe = (fn) => (...args) => {
     if (!ac) return;
@@ -125,6 +131,204 @@ export function createAudio() {
   }
   function radioReset() { radioStep = 0; radioNext = ac.currentTime + 0.05; }
 
+  // ---------------------------------------------------------------------------
+  // Music director adaptif: tiga lapisan (bass, chord, drum) yang intensitas dan
+  // warnanya ditentukan oleh heat (police.stars) dan district (0 pusat, 1 tengah,
+  // 2 pinggir), di-crossfade halus lewat gain node tiap lapisan.
+  // ---------------------------------------------------------------------------
+  const music = { bassG: null, chG: null, drumG: null, step: 0, next: 0, timer: 0, active: false };
+
+  // Rentang/akar per distrik: pinggir lebih rendah & tenang, pusat lebih cerah.
+  const MUSIC_ROOTS = [[38, 41, 43], [33, 36, 38], [31, 34, 36]];      // [pusat, tengah, pinggir]
+  const MUSIC_CHORDS = [[[0, 3, 7], [0, 4, 7], [0, 3, 7], [0, 4, 7]],  // mayor/mayor-ish pusat
+                        [[0, 3, 7], [0, 3, 8], [0, 4, 7], [0, 3, 7]],
+                        [[0, 3, 7], [0, 3, 7], [0, 4, 7], [0, 2, 7]]]; // mellow pinggir
+  const MUSIC_SPB = 60 / 95 / 4; // satu "step" seperempat-enam-belas, tempo sedang
+
+  function musicDirNote(t, kind) {
+    // kind: 'bass' | 'chord' | 'drum'
+    const heat = ctx.heat, dist = Math.max(0, Math.min(2, ctx.district));
+    const bar = Math.floor(music.step / 16) % 4, k = music.step % 16;
+    const root = MUSIC_ROOTS[dist][bar % 3];
+    if (kind === 'bass') {
+      const f = hz(root - 4 + (k % 8 >= 4 ? 12 : 0));
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.5, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320 + heat * 220;
+      o.connect(lp); lp.connect(g); g.connect(music.bassG); o.start(t); o.stop(t + 0.3);
+    } else if (kind === 'chord') {
+      const ch = MUSIC_CHORDS[dist][bar];
+      for (const iv of ch) {
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.12, t + 0.06);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+        const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = hz(root + 24 + iv);
+        const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900 + heat * 220;
+        o.connect(lp); lp.connect(g); g.connect(music.chG); o.start(t); o.stop(t + 0.95);
+      }
+    } else if (kind === 'drum') {
+      // kick tiap beat, hihat di offbeat; makin panas makin rapat.
+      if (k % 4 === 0) {
+        const o = ac.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(120 + heat * 12, t);
+        o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+        const g = ac.createGain(); g.gain.setValueAtTime(0.38, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        o.connect(g); g.connect(music.drumG); o.start(t); o.stop(t + 0.2);
+      }
+      if (k % 2 === 1) {
+        const s = ac.createBufferSource(); s.buffer = radioNoise;
+        const fl = ac.createBiquadFilter(); fl.type = 'highpass'; fl.frequency.value = 6500;
+        const g = ac.createGain(); g.gain.setValueAtTime(0.1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+        s.connect(fl); fl.connect(g); g.connect(music.drumG); s.start(t, Math.random() * 0.4); s.stop(t + 0.06);
+      }
+    }
+  }
+
+  function musicTick() {
+    if (!ac || !music.active) return;
+    const horizon = ac.currentTime + 0.4;
+    while (music.next < horizon) {
+      musicDirNote(music.next, 'bass');
+      musicDirNote(music.next, 'chord');
+      musicDirNote(music.next, 'drum');
+      music.step++;
+      music.next += MUSIC_SPB;
+    }
+    // Crossfade lapisan menuju target intensitas berbanding heat.
+    const heatN = Math.max(0, Math.min(1, ctx.heat / 5));
+    const calm = Math.max(0, Math.min(1, 1 - ctx.district * 0.4));
+    const t = ac.currentTime, tc = 0.5;
+    music.bassG.gain.setTargetAtTime(0.28 * (0.4 + 0.6 * heatN) * calm, t, tc);
+    music.chG.gain.setTargetAtTime(0.16 * (0.5 + 0.5 * heatN) * calm, t, tc);
+    music.drumG.gain.setTargetAtTime(0.22 * (0.15 + 0.85 * heatN), t, tc);
+  }
+
+  function startMusic() {
+    music.bassG = ac.createGain(); music.bassG.gain.value = 0; music.bassG.connect(master);
+    music.chG = ac.createGain(); music.chG.gain.value = 0; music.chG.connect(master);
+    music.drumG = ac.createGain(); music.drumG.gain.value = 0; music.drumG.connect(master);
+    music.next = ac.currentTime + 0.05;
+    music.active = true;
+    if (!music.timer) music.timer = setInterval(musicTick, 100);
+    musicTick();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Engine + tyre: dua oscilator looping yang pitchnya mengikuti kecepatan dengan
+  // pergeseran "doppler-ish" (satu sedikit di atas, satu di bawah, dibangun dari
+  // frekuensi dasar yang naik bersama kecepatan).
+  // ---------------------------------------------------------------------------
+  const drive = { engOsc: null, engG: null, tyreSrc: null, tyreG: null, tyreF: null, cur: 0 };
+
+  function startDrive() {
+    drive.engG = ac.createGain(); drive.engG.gain.value = 0; drive.engG.connect(master);
+    drive.engOsc = ac.createOscillator(); drive.engOsc.type = 'sawtooth'; drive.engOsc.frequency.value = 55;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600;
+    drive.engOsc.connect(lp); lp.connect(drive.engG); drive.engOsc.start();
+
+    drive.tyreG = ac.createGain(); drive.tyreG.gain.value = 0; drive.tyreG.connect(master);
+    drive.tyreF = ac.createBiquadFilter(); drive.tyreF.type = 'bandpass'; drive.tyreF.frequency.value = 900; drive.tyreF.Q.value = 0.8;
+    drive.tyreSrc = ac.createBufferSource(); drive.tyreSrc.buffer = noiseBuffer(1); drive.tyreSrc.loop = true;
+    drive.tyreSrc.connect(drive.tyreF); drive.tyreF.connect(drive.tyreG); drive.tyreSrc.start();
+  }
+
+  // speed: 0..~470 (MAX 320 * boost 1.45). doppler-ish: dasar + detune kecil bergetar.
+  function setDrive(speed) {
+    if (!ac || !drive.engOsc) return;
+    const s = Math.max(0, Math.min(470, Math.abs(speed)));
+    const n = s / 470;
+    const wobble = 1 + Math.sin(ac.currentTime * 30) * 0.02; // doppler-ish detune
+    const f = (45 + 130 * n) * (1 + n * 0.15) * wobble;
+    drive.engOsc.frequency.setTargetAtTime(f, ac.currentTime, 0.05);
+    drive.engG.gain.setTargetAtTime(n > 0.005 ? 0.05 + 0.16 * n : 0, ac.currentTime, 0.08);
+    const tyreLevel = n > 0.01 ? 0.03 + 0.06 * n : 0;
+    drive.tyreG.gain.setTargetAtTime(tyreLevel, ac.currentTime, 0.1);
+    drive.tyreF.frequency.setTargetAtTime(700 + 1400 * n, ac.currentTime, 0.1);
+    drive.cur = n;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ambience: bed kota berisi dengung lalu lintas jauh (noise lowpass + LFO) dan
+  // burung camar terisolasi yang muncul hanya ketika dekat air (ctx.water > 0).
+  // ---------------------------------------------------------------------------
+  const amb = { trafficG: null, gullG: null, gullTimer: 0, gullNext: 0 };
+
+  function gullCall(t) {
+    // seruan berdengung naik-turun, khas burung camar pantai
+    const base = 950 + Math.random() * 500;
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = base;
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.exponentialRampToValueAtTime(base * 1.6, t + 0.08);
+    o.frequency.exponentialRampToValueAtTime(base * 0.7, t + 0.22);
+    o.frequency.setValueAtTime(base * 0.7, t + 0.3);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.05, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(g); g.connect(amb.gullG); o.start(t); o.stop(t + 0.36);
+  }
+
+  function startAmbience() {
+    amb.trafficG = ac.createGain(); amb.trafficG.gain.value = 0.05; amb.trafficG.connect(master);
+    const src = ac.createBufferSource(); src.buffer = noiseBuffer(2); src.loop = true;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+    src.connect(lp); lp.connect(amb.trafficG); src.start();
+    // LFO untuk dengungan lalu lintas yang "bernapas" (naik-turun pelan).
+    const lfo = ac.createOscillator(); lfo.frequency.value = 0.13;
+    const lfoG = ac.createGain(); lfoG.gain.value = 0.03;
+    lfo.connect(lfoG); lfoG.connect(amb.trafficG.gain); lfo.start();
+
+    amb.gullG = ac.createGain(); amb.gullG.gain.value = 0; amb.gullG.connect(master);
+    amb.gullNext = ac.currentTime + 2;
+  }
+
+  function setWater(amount) {
+    if (!ac || !amb.gullG) return;
+    ctx.water = Math.max(0, Math.min(1, amount));
+    amb.gullG.gain.setTargetAtTime(ctx.water * 0.5, ac.currentTime, 0.5);
+  }
+
+  function tickAmbience() {
+    if (!ac || !amb.gullG) return;
+    // camar hanya terdengar ketika dekat air (water) dan tidak sedang hujan berat.
+    if (ctx.water > 0.3 && ac.currentTime >= amb.gullNext) {
+      gullCall(ac.currentTime);
+      amb.gullNext = ac.currentTime + 2 + Math.random() * 5;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reverb ekor sederhana: delay feedback pendek untuk "tail" suara senapan.
+  // ---------------------------------------------------------------------------
+  let reverb = null, reverbIn = null, reverbOut = null;
+  function startReverb() {
+    reverbIn = ac.createGain(); reverbIn.gain.value = 1;
+    reverbOut = ac.createGain(); reverbOut.gain.value = 0.5;
+    reverb = ac.createDelay(1.0); reverb.delayTime.value = 0.16;
+    const fb = ac.createGain(); fb.gain.value = 0.45;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+    reverbIn.connect(reverb); reverb.connect(fb); fb.connect(lp); lp.connect(reverb);
+    reverb.connect(reverbOut); reverbOut.connect(master);
+  }
+  function sendReverb(node, level) {
+    if (!reverbIn) return;
+    const g = ac.createGain(); g.gain.value = level;
+    node.connect(g); g.connect(reverbIn);
+  }
+
+  // Karakter tiap senjata: pitch dasar, durasi, jenis filter, dan level reverb.
+  const GUNS = {
+    pistol: { f: 180, dur: 0.14, lp: 3200, vol: 0.7, rev: 0.3, noise: 0.16 },
+    smg:    { f: 240, dur: 0.09, lp: 4200, vol: 0.5, rev: 0.2, noise: 0.1 },
+    shotgun: { f: 120, dur: 0.28, lp: 1600, vol: 0.9, rev: 0.5, noise: 0.34 },
+    rifle:  { f: 210, dur: 0.12, lp: 3800, vol: 0.65, rev: 0.35, noise: 0.14 },
+    cop:    { f: 200, dur: 0.12, lp: 3400, vol: 0.55, rev: 0.28, noise: 0.12 },
+  };
+
   return {
     start() {
       if (failed) return;
@@ -137,6 +341,11 @@ export function createAudio() {
           master.gain.value = muted ? 0 : 0.35;
           master.connect(ac.destination);
           startSiren();
+          radioNoise = noiseBuffer(1);
+          startReverb();
+          startMusic();
+          startDrive();
+          startAmbience();
         }
         if (ac.state === 'suspended') ac.resume();
       } catch (e) { failed = true; ac = null; }
@@ -145,13 +354,31 @@ export function createAudio() {
       sirenIntensity = Math.max(0, Math.min(1, intensity || 0));
       sirenGain.gain.setTargetAtTime(sirenIntensity * 0.12, ac.currentTime, 0.1);
     }),
-    shot: safe(() => {
+    // shot(weapon) — suara senapan kaya per senjata dengan ekor reverb.
+    shot: safe((weapon = 'pistol') => {
+      const g = GUNS[weapon] || GUNS.pistol;
       const t = ac.currentTime;
-      const src = ac.createBufferSource(); src.buffer = noiseBuffer(0.15);
+      const src = ac.createBufferSource(); src.buffer = noiseBuffer(g.noise);
       const lp = ac.createBiquadFilter(); lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(4000, t); lp.frequency.exponentialRampToValueAtTime(200, t + 0.15);
-      src.connect(lp); lp.connect(envGain(t, 0.8, 0.15));
-      src.start(t);
+      lp.frequency.setValueAtTime(g.lp, t); lp.frequency.exponentialRampToValueAtTime(120, t + g.dur);
+      const mainG = ac.createGain();
+      mainG.gain.setValueAtTime(g.vol, t); mainG.gain.exponentialRampToValueAtTime(0.0001, t + g.dur);
+      src.connect(lp); lp.connect(mainG); mainG.connect(master);
+      // bodi: dentuman rendah menyertai ledakan noise
+      const body = ac.createOscillator(); body.type = 'sine';
+      body.frequency.setValueAtTime(g.f, t); body.frequency.exponentialRampToValueAtTime(50, t + g.dur * 0.8);
+      const bg = ac.createGain(); bg.gain.setValueAtTime(g.vol * 0.6, t); bg.gain.exponentialRampToValueAtTime(0.0001, t + g.dur);
+      body.connect(bg); bg.connect(master);
+      sendReverb(mainG, g.rev);
+      if (weapon === 'shotgun') { // ledakan kedua kecil sesaat kemudian
+        const src2 = ac.createBufferSource(); src2.buffer = noiseBuffer(0.12);
+        const lp2 = ac.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 1200;
+        const g2 = ac.createGain(); g2.gain.setValueAtTime(g.vol * 0.5, t + 0.03); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        src2.connect(lp2); lp2.connect(g2); g2.connect(master);
+        sendReverb(g2, g.rev);
+        src2.start(t + 0.03);
+      }
+      src.start(t); body.start(t); body.stop(t + g.dur + 0.02);
     }),
     crash: safe((strength = 1) => {
       const t = ac.currentTime, s = Math.max(0.2, Math.min(1, strength));
@@ -222,6 +449,28 @@ export function createAudio() {
     setVolume: safe((vol) => {
       if (!master) return;
       master.gain.value = vol;
+    }),
+    // --- antarmuka adaptif baru ---------------------------------------------------
+    // setHeat(h): 0..5 bintang buruan, mendorong intensitas director.
+    setHeat: safe((h) => { ctx.heat = Math.max(0, Math.min(5, h || 0)); }),
+    // setDistrict(d): 0 pusat, 1 tengah, 2 pinggir — mewarnai director.
+    setDistrict: safe((d) => { ctx.district = Math.max(0, Math.min(2, d || 0)); }),
+    // setEngine(speed): 0..~470, menggerakkan engine & tyre.
+    setEngine: safe((speed) => { setDrive(speed); }),
+    // setWater(a): 0..1 kedekatan dengan laut/pantai untuk camar.
+    setWater: safe((a) => setWater(a)),
+    // update(state): dipanggil tiap frame dari loop utama dengan snapshot konteks.
+    update: safe((state) => {
+      if (!ac) return;
+      const car = state.car;
+      const speed = car ? Math.abs(car.speed || 0) : 0;
+      ctx.heat = state.heat ?? 0;
+      ctx.district = state.district ?? 0;
+      ctx.speed = speed;
+      ctx.water = state.water ?? 0;
+      setDrive(speed);
+      setWater(ctx.water);
+      tickAmbience();
     }),
   };
 }

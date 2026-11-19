@@ -61,7 +61,7 @@ function rayCircle(px, py, r, ox, oy, dx, dy) {
 const AIM_MAX = 600;
 function makePool(n, make) { return Array.from({ length: n }, make); }
 
-export function createCombat({ gfx, world, player, police, peds, ui, missions }) {
+export function createCombat({ gfx, world, player, police, peds, ui, missions, audio }) {
   player.health = MAX_HEALTH;
   player.maxHealth = MAX_HEALTH;
 
@@ -384,6 +384,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
       return;
     }
     c.ammo[c.weapon]--;
+    if (audio) audio.shot(c.weapon);
     const car = player.car, src = car || player;
     let base, spread;
     if (car) { base = car.angle; spread = Math.max(DRIVEBY_SPREAD, w.spread); }
@@ -439,6 +440,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     const wall = wallDistance(world, sx, sy, dx, dy, len);
     addTracer(sx, sy, z0, sx + dx * wall, sy + dy * wall, 12, 3, COP_COLOR, life);
     addFlash(sx + dx * 14, sy + dy * 14, z0, angle, 18, COP_COLOR, 0.08);
+    if (audio && dmg > 0) audio.shot('cop');
     if (hits && wall >= len) {
       if (dmg > 0) {
         hurtPlayer(dmg);

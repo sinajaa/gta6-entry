@@ -1,6 +1,6 @@
 // main.js — titik masuk game, loop utama, dan input
 // Alur utama game dirangkai dan dirapikan langsung oleh penulis entry.
-import { createWorld, T, tileAt } from './world.js';
+import { createWorld, T, tileAt, districtAt } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
 import { updateCamera3D, createMenuCamera, updateMenuCamera, beginMenuBlend, blendCameraStart, blendCameraEnd } from './camera.js';
 import { initRenderer, renderFrame } from './render3d.js';
@@ -41,7 +41,7 @@ const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 ui.link(world, missions, player);
 const SIREN_RANGE = 600;
-const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
+const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
@@ -241,6 +241,15 @@ function frame(now) {
   ui.standingHud = rep.visible && !interiors.active ? { name: DISTRICT_NAMES[rep.cur], value: ui.standing[rep.cur], shield: police.shield } : null;
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
+  // Suara adaptif: music director (heat + distrik) dan engine/ban/camar per frame.
+  const edgeD = Math.min(there.x, there.y, world.width - there.x, world.height - there.y);
+  const water = Math.max(0, 1 - edgeD / 260);
+  audio.update({
+    car,
+    heat: police.stars,
+    district: districtAt(there.x, there.y),
+    water,
+  });
   if (police.stars >= 3) {
     for (const cop of police.cars) if (Math.hypot(cop.x - (car || player).x, cop.y - (car || player).y) < 250) alarmPeds(peds, cop.x, cop.y, 200);
   }
