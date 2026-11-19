@@ -1,4 +1,5 @@
 // player.js — gerak dan kontrol pemain berjalan kaki
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 const WALK = 150, SPRINT = 260, ACCEL = 1400;
 
 export function createPlayer(x, y) {

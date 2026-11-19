@@ -1,4 +1,5 @@
 // vehicle.js — mobil, fisika mengemudi, dan lalu lintas NPC
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 import { TILE, T, tileAt } from './world.js';
 
 const ACCEL = 260, BRAKE = 420, DRAG = 0.9, TURN = 2.4, MAX = 320, REVERSE_MAX = -90;

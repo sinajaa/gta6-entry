@@ -1,4 +1,5 @@
 // audio.js — efek suara sintetis WebAudio; AudioContext baru dibuat setelah gesture
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 export function createAudio() {
   let ac = null, master = null, muted = false, failed = false;
   let sirenGain = null, sirenOsc = [], sirenTimer = 0, sirenIntensity = 0, sirenHigh = false;

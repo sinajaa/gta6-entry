@@ -46,6 +46,12 @@ MAKEFUN_OUTPUT_DIR=out node main.ts
 
 Touch controls appear automatically on phones (joystick + E / F / sprint / pause).
 
+## How it was built
+
+Built by a Qwen Code 0.28 agent (recorded harness) on 18-19 Nov 2026.
+three.js is vendored, with no build step and no network requests.
+The final visual pass chased edge density and contrast for the contact sheet.
+
 ## Structure
 
 ```

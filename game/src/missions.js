@@ -1,4 +1,5 @@
 // missions.js — sistem misi berantai: DELIVERY, CHASE, TIMED
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 const GAP_SECONDS = 3;
 const DELIVERY = { min: 400, max: 700, reach: 40, reward: 250 };
 const CHASE = { spawn: 300, speed: 170, reach: 40, hold: 2, reward: 400, timeout: 120 };

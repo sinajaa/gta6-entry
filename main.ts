@@ -17,10 +17,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
+const ENTRY = { name: 'SUNNY CITY', slug: 'gta6-01', tagline: '3D open-world crime: missions, 5-star police, helicopter, traffic, carjacking, combat' };
+
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 mkdirSync(out, { recursive: true });
+writeFileSync(join(out, 'entry.json'), JSON.stringify(ENTRY, null, 2));
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
@@ -39,3 +42,4 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
+console.log(`entry ${ENTRY.name} (${ENTRY.slug}) -> ${out}`);

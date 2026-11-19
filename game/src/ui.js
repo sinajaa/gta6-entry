@@ -1,4 +1,5 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 const SAVE_KEY = 'sunnycity.save.v1';
 const W = 960, H = 540, TOAST_SECONDS = 2;
 const TOUCH_CONTROLS = ['Joystick kiri: gerak · E: masuk mobil · F: tembak', 'LARI: sprint · PAUSE: jeda'];

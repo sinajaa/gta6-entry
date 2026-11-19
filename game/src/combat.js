@@ -1,4 +1,5 @@
 // combat.js — bidik, tembak (hitscan), drive-by, kesehatan, WASTED/BUSTED, dan polisi menembak
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, T, tileAt, WORLD_W, WORLD_H } from './world.js';
 import { hasLineOfSight, addHeat } from './police.js';

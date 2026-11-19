@@ -1,4 +1,5 @@
 // world.js — grid kota, tile, dan bounding box bangunan
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 export const TILE = 32;
 export const COLS = 80;
 export const ROWS = 80;

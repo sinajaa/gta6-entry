@@ -1,4 +1,5 @@
 // touch.js — joystick virtual + tombol sentuh (E/F/LARI/PAUSE) untuk HP
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 const BUTTON_KEYS = { e: 'e', f: 'f', run: 'shift', pause: 'Escape' };
 
 export function createTouch({ onStick, onButton }) {

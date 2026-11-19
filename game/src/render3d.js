@@ -1,4 +1,5 @@
 // render3d.js — render kota 3D dengan three.js dan HUD overlay
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H } from './world.js';
 import { nearestEnterable } from './vehicle.js';

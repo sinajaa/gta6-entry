@@ -1,4 +1,5 @@
 // police.js — level buruan dan polisi AI pengejar
+// SUNNY CITY — authored pass 2026-11-19 (recording 03)
 import { TILE, T, tileAt } from './world.js';
 
 const ROAD_PERIOD = 10 * TILE, ROAD_WIDTH = 2 * TILE, LANE_NEAR = 16, LANE_FAR = 48;
