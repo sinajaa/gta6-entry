@@ -541,7 +541,11 @@ export function createMissions(world, ui, audio) {
     ui.toast(`MISI SELESAI +$${reward}`);
     say(a.def.who, a.def.win);
     if (!isSide) { ui.missionsDone++; m.done++; }
-    if (ui.rep) ui.rep.add(m.focus.x, m.focus.y, 10);
+    if (ui.rep) {
+      ui.rep.add(m.focus.x, m.focus.y, 10);
+      const bonus = ui.rep.job(m.focus.x, m.focus.y);
+      if (bonus) { ui.addMoney(bonus); ui.toast(`REP DISTRIK +$${bonus}`); }
+    }
     audio.complete();
     cursor = isSide ? cursor : (MISSION_LIST.indexOf(a.def) + 1) % MISSION_LIST.length;
     m.checkpoint = null;

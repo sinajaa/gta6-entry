@@ -191,7 +191,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
     if (!open) { ui.garageMenu = null; armed = false; }
   }
 
-  const priceOf = (base) => (ui.rep ? ui.rep.price(base, GARAGE.x, GARAGE.y) : base);
+  const priceOf = (base) => (ui.rep ? (base === PRICE.repair ? ui.rep.repairPrice : ui.rep.price)(base, GARAGE.x, GARAGE.y) : base);
   function spend(base) {
     const price = priceOf(base);
     if (ui.money < price) { ui.toast('Uang tidak cukup'); return false; }

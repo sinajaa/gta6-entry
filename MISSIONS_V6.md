@@ -80,3 +80,4 @@ A steal-and-return side job that reuses the garage location:
 - `game/src/missions.js` — six new `MISSION_LIST` entries, the `heist`, `taxi`, `stunt`, `bounty`, `pizza`, and `repo` handlers, their `init` branches, `startSide`, `playerCar`, the per-mission `bonus` reward in `finish()`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
 - `game/src/ui.js` — `logIdx`, `logSelect`, `logStartSelected`, `logClick`, log-open key handling, and the rewrite of `drawMissionLog` to select/start side jobs.
 - `game/src/main.js` — pointer-down routing to `ui.logClick` when the log is open.
+- District job reputation: `standing.js` `job()` counts finished jobs per district; at 3 it pays +$50 per job (call in `missions.js finish()`) and `repairPrice` gives 20% off garage repair (`extras.js`).
