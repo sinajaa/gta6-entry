@@ -7,6 +7,7 @@ import { createPolice, addHeat, updateWanted, updatePolice } from './police.js';
 import { createUI } from './ui.js';
 import { createPeds, updatePeds, alarmPeds } from './peds.js';
 import { createAudio } from './audio.js';
+import { createMissions } from './missions.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
 const canvas = document.getElementById('game');
@@ -29,11 +30,12 @@ const gfx = initRenderer(canvas, document.getElementById('hud'), world);
 const keys = new Set();
 const ui = createUI(document.getElementById('hud'));
 const audio = createAudio();
+const missions = createMissions(world, ui, audio);
 const SIREN_RANGE = 600;
 updateCamera3D(gfx.camera, player, 'walk', 1);
 renderFrame(gfx, world, player, 0, police, peds);
 
-function startGame() { audio.start(); audio.click(); }
+function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
 addEventListener('pointerdown', () => { if (ui.click() === 'start') startGame(); });
 addEventListener('beforeunload', () => ui.save());
 
@@ -83,8 +85,9 @@ function frame(now) {
     for (const cop of police.cars) if (Math.hypot(cop.x - (car || player).x, cop.y - (car || player).y) < 250) alarmPeds(peds, cop.x, cop.y, 200);
   }
   updatePeds(world, player, peds, dt);
+  missions.update(dt, player, world);
   updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
-  renderFrame(gfx, world, player, fps, police, peds);
+  renderFrame(gfx, world, player, fps, police, peds, missions);
   const focus = car || player;
   let nearest = Infinity;
   for (const cop of police.cars) nearest = Math.min(nearest, Math.hypot(cop.x - focus.x, cop.y - focus.y));
@@ -95,4 +98,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { ui, audio, world, player, police, peds, keys, gfx, cars: world.cars };
+window.__game = { ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };

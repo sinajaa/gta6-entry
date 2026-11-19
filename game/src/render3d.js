@@ -240,6 +240,42 @@ export function buildWorldMeshes(gfx, world) {
 
   buildHeli(gfx);
   buildProps(gfx, world);
+  buildMissionMarkers(gfx);
+}
+
+const MARKER_MAX = 4, MARKER_RADIUS = 14, MARKER_HEIGHT = 120;
+function buildMissionMarkers(gfx) {
+  const pillar = new THREE.CylinderGeometry(MARKER_RADIUS, MARKER_RADIUS, MARKER_HEIGHT, 20, 1, true);
+  pillar.translate(0, MARKER_HEIGHT / 2, 0);
+  const ring = new THREE.RingGeometry(MARKER_RADIUS + 6, MARKER_RADIUS + 16, 32);
+  ring.rotateX(-Math.PI / 2);
+  ring.translate(0, 0.8, 0);
+  const geo = mergeColored([{ geo: pillar, color: '#ffffff' }, { geo: ring, color: '#ffffff' }]);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffd21f, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const mesh = new THREE.InstancedMesh(geo, mat, MARKER_MAX);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled = false;
+  mesh.count = 0;
+  mesh.renderOrder = 5;
+  gfx.scene.add(mesh);
+  gfx.markerMesh = mesh;
+}
+
+const markerScale = new THREE.Vector3(1, 1, 1), markerQuat = new THREE.Quaternion();
+function syncMarkers(gfx, missions) {
+  const mesh = gfx.markerMesh;
+  if (!mesh) return;
+  const list = (missions && missions.markers) || [];
+  const n = Math.min(list.length, MARKER_MAX);
+  for (let i = 0; i < n; i++) {
+    const k = list[i];
+    carPosition.set(k.x - WORLD_W / 2, 0, k.y - WORLD_H / 2);
+    markerScale.set(k.scale, 1, k.scale);
+    carMatrix.compose(carPosition, markerQuat, markerScale);
+    mesh.setMatrixAt(i, carMatrix);
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
 }
 
 function buildHeli(gfx) {
@@ -607,16 +643,17 @@ function syncPeds(gfx, player, peds) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
-export function renderFrame(gfx, world, player, fps, police, peds) {
+export function renderFrame(gfx, world, player, fps, police, peds, missions) {
   syncActors(gfx, world, player);
   syncPeds(gfx, player, peds);
+  syncMarkers(gfx, missions);
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
   gfx.sun.position.set(tx, 0, tz).add(SUN_OFFSET);
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
   gfx.renderer.render(gfx.scene, gfx.camera);
-  drawHud(gfx.hud, world, player, fps, police);
+  drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera);
 }
 
 const MAP_SIZE = 320, MAP_R = 75, MAP_VIEW = 700, MAP_CX = 20 + MAP_R, MAP_CY = 540 - 20 - MAP_R;
@@ -671,12 +708,13 @@ function bar(ctx, x, y, w, h, frac, fill, back = 'rgba(0,0,0,0.55)') {
   ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, Math.max(0, (w - 2) * Math.min(1, Math.max(0, frac))), h - 2);
 }
 
-export function drawHud(ctx, world, p, fps, police) {
+export function drawHud(ctx, world, p, fps, police, missions, camera) {
   ctx.clearRect(0, 0, 960, 540);
   const car = p.car;
   const debug = typeof location !== 'undefined' && location.search.includes('debug');
   police = police || world.police;
   drawWanted(ctx, world, police);
+  if (missions) drawMission(ctx, p, missions, camera);
 
   if (police && police.stars >= 3) {
     const pulse = 0.28 + 0.12 * Math.sin(world.time * 6);
@@ -751,4 +789,28 @@ function drawWanted(ctx, world, police = world.police) {
     ctx.fillText('WANTED', 940, 64);
     ctx.textAlign = 'left';
   }
+}
+
+function drawMission(ctx, p, missions, camera) {
+  const text = missions.objectiveText;
+  if (!text) return;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#ffd21f';
+  ctx.strokeText(text, 480, 36); ctx.fillText(text, 480, 36);
+  const t = missions.target, focus = p.car || p;
+  if (t && camera) {
+    const fx = focus.x - WORLD_W / 2 - camera.position.x, fz = focus.y - WORLD_H / 2 - camera.position.z;
+    const fl = Math.hypot(fx, fz) || 1;
+    const dx = t.x - focus.x, dy = t.y - focus.y;
+    const side = (dx * -fz + dy * fx) / fl, ahead = (dx * fx + dy * fz) / fl;
+    const a = Math.atan2(side, ahead);
+    ctx.translate(480 + Math.sin(a) * 400, 290 - Math.cos(a) * 200);
+    ctx.rotate(a);
+    ctx.fillStyle = '#ffd21f'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(10, 10); ctx.lineTo(0, 4); ctx.lineTo(-10, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
 }
