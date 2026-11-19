@@ -11,8 +11,8 @@ const ROOF_BOOST = 1.25;
 const CAR_SIZE = { length: 56, height: 18, width: 22 };
 const PLAYER_HEIGHT = 28;
 const MAX_CARS = 64;
-const MAX_PEDS = 80, PED_DRAW_RADIUS = 700, PED_HEIGHT = 16;
-const PED_SHIRTS = ['#ffffff', '#2a5aff', '#e0262b', '#f5c518'];
+const MAX_PEDS = 128, PED_DRAW_RADIUS = 700, PED_HEIGHT = 16;
+const PED_SHIRTS = ['#ffffff', '#2a5aff', '#e0262b', '#f5c518', '#2fa84f', '#111111'];
 const MAX_LIGHTS = 16, LIGHT_HZ = 6;
 const LIGHT_SIZE = { length: 6, height: 3, width: 8 };
 const EVADE_MAX = [10, 14, 18, 24, 30];
@@ -814,12 +814,13 @@ function syncPeds(gfx, player, peds) {
     const p = peds[i];
     if (Math.hypot(p.x - focus.x, p.y - focus.y) > PED_DRAW_RADIUS) continue;
     const cower = p.state === 'COWER';
-    pedScale.set(1, cower ? 0.6 : 1, 1);
+    const sc = p.scale || 1;
+    pedScale.set(sc, sc * (cower ? 0.6 : 1), sc);
     carPosition.set(p.x - WORLD_W / 2, (PED_HEIGHT * pedScale.y) / 2 + 1, p.y - WORLD_H / 2);
     carQuaternion.setFromAxisAngle(yAxis, -p.angle);
     carMatrix.compose(carPosition, carQuaternion, pedScale);
     mesh.setMatrixAt(n, carMatrix);
-    mesh.setColorAt(n, carColor.set(PED_SHIRTS[i % PED_SHIRTS.length]));
+    mesh.setColorAt(n, carColor.set(PED_SHIRTS[(p.shirt ?? i) % PED_SHIRTS.length]));
     n++;
   }
   mesh.count = n;

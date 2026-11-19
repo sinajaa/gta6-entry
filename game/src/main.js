@@ -24,7 +24,7 @@ const spawnSpot = [[SPAWN_SIDE, 0], [-SPAWN_SIDE, 0], [0, SPAWN_SIDE], [0, -SPAW
 if (!spawnSpot) throw new Error('spawn: tidak ada sisi mobil yang bebas');
 [player.x, player.y] = spawnSpot;
 const police = createPolice(world);
-const peds = createPeds(world, 72);
+const peds = createPeds(world, player.x, player.y, 120);
 const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
 let crashCooldown = 0;
 const gfx = initRenderer(canvas, document.getElementById('hud'), world);

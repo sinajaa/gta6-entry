@@ -3,7 +3,9 @@ import { TILE, COLS, ROWS, T, tileAt } from './world.js';
 
 export const PED_ACTIVE_RADIUS = 900;
 const WALK_SPEED = 55, PANIC_SPEED = 160, PANIC_TIME = 4, COWER_TIME = 2;
-const RECYCLE_MIN = 300, RECYCLE_MAX = 800, SPAWN_RADIUS = 500;
+const RECYCLE_MIN = 300, RECYCLE_MAX = 800;
+const SPAWN_MIN = 250, SPAWN_MAX = 900, NEAR_RADIUS = 700, NEAR_MIN = 45, REFILL_MIN = 300, REFILL_MAX = 700;
+const SHIRT_COUNT = 6;
 const LOOKAHEAD = 20, SCARE_CAR_SPEED = 150, SCARE_CAR_DIST = 50;
 const HALF_PI = Math.PI / 2;
 
@@ -21,24 +23,33 @@ function sidewalkTiles(world) {
 function placeNear(world, p, cx, cy, minD, maxD) {
   const list = sidewalkTiles(world);
   let pick = null;
-  for (let i = 0; i < 40 && !pick; i++) {
+  for (let i = 0; i < 80 && !pick; i++) {
     const c = list[Math.floor(Math.random() * list.length)];
     const d = Math.hypot(c[0] - cx, c[1] - cy);
     if (d >= minD && d <= maxD) pick = c;
   }
-  if (!pick) pick = list[Math.floor(Math.random() * list.length)];
+  if (!pick) {
+    let best = Infinity;
+    for (let i = 0; i < 200; i++) {
+      const c = list[Math.floor(Math.random() * list.length)];
+      const e = Math.abs(Math.hypot(c[0] - cx, c[1] - cy) - (minD + maxD) / 2);
+      if (e < best) { best = e; pick = c; }
+    }
+  }
   p.x = pick[0]; p.y = pick[1];
   p.angle = Math.floor(Math.random() * 4) * HALF_PI;
   p.state = 'WALK';
   p.timer = 1 + Math.random() * 4;
 }
 
-export function createPeds(world, count = 72) {
+export function createPeds(world, px, py, count = 120) {
   const peds = [];
-  const cx = world.width / 2, cy = world.height / 2;
   for (let i = 0; i < count; i++) {
-    const p = { x: 0, y: 0, angle: 0, speed: WALK_SPEED, state: 'WALK', timer: 0, fx: 0, fy: 0 };
-    placeNear(world, p, cx, cy, 0, SPAWN_RADIUS);
+    const p = {
+      x: 0, y: 0, angle: 0, speed: WALK_SPEED, state: 'WALK', timer: 0, fx: 0, fy: 0,
+      shirt: i % SHIRT_COUNT, scale: 0.85 + Math.random() * 0.3,
+    };
+    placeNear(world, p, px, py, SPAWN_MIN, SPAWN_MAX);
     peds.push(p);
   }
   return peds;
@@ -95,6 +106,13 @@ function movePanic(world, p, dt) {
 export function updatePeds(world, player, peds, dt) {
   const focus = player.car || player;
   const carSpeed = player.car ? Math.abs(player.car.speed) : 0;
+  let near = 0, far = null, farD = -1;
+  for (const p of peds) {
+    const d = Math.hypot(p.x - focus.x, p.y - focus.y);
+    if (d <= NEAR_RADIUS) near++;
+    else if (d > farD) { farD = d; far = p; }
+  }
+  if (near < NEAR_MIN && far) placeNear(world, far, focus.x, focus.y, REFILL_MIN, REFILL_MAX);
   for (const p of peds) {
     const d = Math.hypot(p.x - focus.x, p.y - focus.y);
     if (d > PED_ACTIVE_RADIUS) { placeNear(world, p, focus.x, focus.y, RECYCLE_MIN, RECYCLE_MAX); continue; }
