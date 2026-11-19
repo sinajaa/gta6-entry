@@ -9,6 +9,7 @@ import { createPeds, updatePeds, alarmPeds } from './peds.js';
 import { createAudio } from './audio.js';
 import { createMissions } from './missions.js';
 import { createCombat } from './combat.js';
+import { createTouch } from './touch.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
 const canvas = document.getElementById('game');
@@ -38,26 +39,53 @@ updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
 function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
+const touchTarget = (e) => !!(e.target && e.target.closest && e.target.closest('#touch'));
 addEventListener('pointerdown', (e) => {
   if (ui.click() === 'start') startGame();
-  else if (e.button === 0 && ui.state === 'PLAYING') combat.mouseDown = true;
+  else if (e.button === 0 && ui.state === 'PLAYING' && !touchTarget(e)) combat.mouseDown = true;
 });
-addEventListener('pointerup', () => { combat.mouseDown = false; });
-addEventListener('pointermove', (e) => combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()));
+addEventListener('pointerup', (e) => { if (!touchTarget(e)) combat.mouseDown = false; });
+addEventListener('pointermove', (e) => { if (!touchTarget(e)) combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()); });
 addEventListener('beforeunload', () => ui.save());
 
-addEventListener('keydown', (e) => {
+function enterExit() {
+  const wasOnFoot = !player.car;
+  toggleVehicle(world, player);
+  if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
+}
+function pressKey(e) {
   const action = ui.handleKey(e);
   if (action === 'start') startGame();
-  if (action === 'pause') { keys.clear(); audio.click(); }
+  if (action === 'pause') { keys.clear(); touch.reset && touch.reset(); combat.mouseDown = false; audio.click(); }
   if (action === 'resume') audio.click();
+  return action;
+}
+
+const STICK_DEAD = 0.3;
+const touch = createTouch({
+  onStick(x, y) {
+    for (const [k, on] of [['a', x < -STICK_DEAD], ['d', x > STICK_DEAD], ['w', y < -STICK_DEAD], ['s', y > STICK_DEAD]]) {
+      if (on && ui.state === 'PLAYING') keys.add(k); else keys.delete(k);
+    }
+  },
+  onButton(k, down) {
+    if (k === 'Escape') { if (down) pressKey({ key: 'Escape', repeat: false }); return; }
+    if (ui.state !== 'PLAYING') return;
+    if (k === 'e') { if (down) enterExit(); }
+    else if (k === 'f') combat.mouseDown = down;
+    else if (down) keys.add(k); else keys.delete(k);
+  },
+});
+if (touch.isTouch) {
+  ui.touch = true;
+  addEventListener('pointerdown', () => { if (ui.state === 'PLAYING' && !ui.touchHinted) { ui.touchHinted = true; ui.toast('Joystick kiri: gerak · E: masuk mobil · F: tembak'); } }, { once: false });
+}
+
+addEventListener('keydown', (e) => {
+  pressKey(e);
   const k = e.key.toLowerCase();
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
-  if (k === 'e' && !e.repeat) {
-    const wasOnFoot = !player.car;
-    toggleVehicle(world, player);
-    if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
-  }
+  if (k === 'e' && !e.repeat) enterExit();
   keys.add(k);
   if (k.startsWith('arrow') || k === ' ') e.preventDefault();
 });

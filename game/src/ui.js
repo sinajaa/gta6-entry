@@ -1,6 +1,7 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
 const SAVE_KEY = 'sunnycity.save.v1';
 const W = 960, H = 540, TOAST_SECONDS = 2;
+const TOUCH_CONTROLS = ['Joystick kiri: gerak · E: masuk mobil · F: tembak', 'LARI: sprint · PAUSE: jeda'];
 const CONTROLS = ['WASD / Panah — jalan & kemudi', 'E — masuk / keluar mobil', 'F / Klik kiri — tembak', 'Mouse — bidik', '1 / 2 — pistol / SMG', 'ESC — pause'];
 
 function loadSave() {
@@ -17,6 +18,7 @@ export function createUI(hud) {
   const saved = loadSave();
   const ui = {
     state: 'MENU',
+    touch: false,
     money: saved ? saved.money : 0,
     missionsDone: saved && Number.isFinite(saved.missionsDone) ? saved.missionsDone : 0,
     wanted: 0,
@@ -136,7 +138,7 @@ function drawOverlay(ctx, ui) {
     ctx.fillText('open-world crime', W / 2, y + 36);
     y += 100;
     ctx.font = 'bold 24px sans-serif'; ctx.fillStyle = '#fff';
-    ctx.fillText('TEKAN ENTER / KLIK UNTUK MULAI', W / 2, y);
+    ctx.fillText((ui.touch ? 'TAP UNTUK MULAI' : 'TEKAN ENTER / KLIK UNTUK MULAI'), W / 2, y);
     y += 40;
   } else {
     ctx.font = 'bold 56px sans-serif';
@@ -144,13 +146,13 @@ function drawOverlay(ctx, ui) {
     y += 80;
   }
   ctx.font = '18px sans-serif'; ctx.fillStyle = '#ccc';
-  for (const line of CONTROLS) { ctx.fillText(line, W / 2, y); y += 28; }
+  for (const line of (ui.touch ? TOUCH_CONTROLS : CONTROLS)) { ctx.fillText(line, W / 2, y); y += 28; }
   y += 14;
   if (menu) {
     if (ui.hasSave) { ctx.fillStyle = '#7bd66b'; ctx.font = 'bold 20px sans-serif'; ctx.fillText('uang tersimpan: $' + ui.money, W / 2, y); }
   } else {
     ctx.fillStyle = '#fff'; ctx.font = 'bold 20px sans-serif';
-    ctx.fillText('ESC untuk lanjut', W / 2, y);
+    ctx.fillText((ui.touch ? 'PAUSE untuk lanjut' : 'ESC untuk lanjut'), W / 2, y);
   }
   ctx.restore();
 }
