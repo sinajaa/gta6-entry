@@ -67,4 +67,4 @@ Peds occasionally pause near shop fronts to check a phone (`PHONE`) or sit on a 
 
 ## Verification
 
-`MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.
+`MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.- Interiors: added a 5th enterable interior, LAUNDROMAT (washers, counter, neon sign), registered in KINDS/SPOTS/furnish like the diner.

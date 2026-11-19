@@ -10,6 +10,7 @@ const KINDS = [
   { name: 'TOKO SENJATA', color: 0xff4a4a, floor: 0x4a4f57, wall: 0x7d8590 },
   { name: 'BANK', color: 0x4aa8ff, floor: 0xb9b3a4, wall: 0xdcd6c6 },
   { name: 'DINER', color: 0xff6b8a, floor: 0x4a3b32, wall: 0xe8c9a8 },
+  { name: 'LAUNDROMAT', color: 0x4affd8, floor: 0x9aa7ad, wall: 0xd6e4ea },
 ];
 const SIDES = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 const USE_RANGE = 34, VAULT_CASH = 2500, AMMO_PRICE = 200, MEAL_PRICE = 50, HEIST_HEAT = 390;
@@ -18,6 +19,7 @@ const SPOTS = [
   [{ x: 0, z: -14, id: 'ammo', label: 'E: beli ammo $' + AMMO_PRICE }],
   [{ x: 0, z: -50, id: 'vault', label: 'E: buka vault' }],
   [[-70, -40], [0, -40], [70, -40], [-70, 20], [70, 20]].map(([x, z]) => ({ x, z, id: 'meal', label: 'E: makan (pulihkan HP) $' + MEAL_PRICE })),
+  [],
 ];
 
 function pickDoors(world, player) {
@@ -86,12 +88,22 @@ function furnish(g, i) {
     }
     box(g, 14, 20, 40, -HALF_W + 10, 10, 20, 0x3a3f47);
     box(g, 14, 20, 40, HALF_W - 10, 10, 20, 0x3a3f47);
-  } else {
+  } else if (i === 2) {
     box(g, 200, 22, 12, 0, 11, -30, 0x6e5a3a);
     box(g, 200, 18, 2, 0, 31, -30, 0x9fd0e8).material.transparent = true;
     box(g, 54, 40, 24, 0, 20, -HALF_D + 14, 0x8c929a);
     g.userData.vaultDoor = box(g, 30, 30, 3, 0, 20, -HALF_D + 26, 0xc9a227);
     for (const x of [-80, 80]) box(g, 14, 14, 14, x, 7, 30, 0x2f6b4a);
+  }
+  if (i === 4) {
+    for (const x of [-90, -55, -20, 15, 50, 85]) {       // deretan mesin cuci
+      box(g, 26, 30, 24, x, 15, -HALF_D + 16, 0xeef2f4);
+      box(g, 14, 14, 2, x, 16, -HALF_D + 29, 0x2b4a5a);  // pintu kaca
+      box(g, 20, 3, 2, x, 27, -HALF_D + 29, 0x4affd8);   // panel
+    }
+    box(g, 120, 22, 12, 30, 11, 30, 0x6b7f8a);          // counter
+    box(g, 30, 4, 3, -HALF_W + 4, 34, 0, 0x4affd8).material = new THREE.MeshBasicMaterial({ color: 0x4affd8 }); // neon
+    box(g, 40, 10, 3, 0, 36, -HALF_D + 3, 0xff4aa8).material = new THREE.MeshBasicMaterial({ color: 0xff4aa8 }); // papan neon
   }
   if (i === 3) {
     // Diner: meja counter panjang dengan bangku tunggu di depan, plus beberapa meja samping.
