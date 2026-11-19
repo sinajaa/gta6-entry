@@ -3,6 +3,7 @@
 import { TILE, T, tileAt } from './world.js';
 
 const ACCEL = 260, BRAKE = 420, DRAG = 0.9, TURN = 2.4, MAX = 320, REVERSE_MAX = -90;
+const DRIFT_MIN_SPEED = 110, DRIFT_SCORE_RATE = 32, DRIFT_DECAY = 40, DRIFT_MIN_SCORE = 12, DRIFT_CASH_RATE = 0.5;
 const CRUISE = 130, NPC_COUNT = 28, LOOKAHEAD = 40, FOLLOW_DISTANCE = 50, FOLLOW_ANGLE = 0.6;
 const ENTER_RANGE = 60, SPAWN_CAR_RADIUS = 40, HALF_LENGTH = 18, HALF_WIDTH = 9;
 const ROAD_PERIOD = 10 * TILE, ROAD_WIDTH = 2 * TILE, PHASE_SECONDS = 6, STOP_MARGIN = 6;
@@ -89,6 +90,22 @@ export function updateDrivenCar(car, keys, world, dt) {
   if (handbrake) car.speed += Math.sign(car.speed) * Math.max(-BRAKE * 1.6 * dt, -Math.abs(car.speed));
   car.speed *= 1 - (handbrake ? DRAG * 2.2 : DRAG) * dt;
   car.speed = Math.max(REVERSE_MAX, Math.min(top, car.speed));
+
+  // Skor drift: slide menyamping saat ngebut (rem tangan atau setir penuh di kecepatan tinggi).
+  const drifting = Math.abs(car.speed) > DRIFT_MIN_SPEED && (handbrake || (Math.abs(steer) === 1 && Math.abs(car.speed) > DRIFT_MIN_SPEED * 1.3));
+  if (drifting) {
+    car.driftScore = (car.driftScore || 0) + DRIFT_SCORE_RATE * dt;
+    car.driftTotal = (car.driftTotal || 0) + DRIFT_SCORE_RATE * dt;
+    car.drifting = true;
+  } else if (car.drifting || (car.driftScore || 0) > 0) {
+    car.driftScore = Math.max(0, (car.driftScore || 0) - DRIFT_DECAY * dt);
+    if (car.driftScore <= 0) {
+      const total = car.driftTotal || 0;
+      if (total >= DRIFT_MIN_SCORE) car.driftPayoff = Math.max(1, Math.round(total * DRIFT_CASH_RATE));
+      car.driftScore = 0; car.driftTotal = 0; car.drifting = false;
+    }
+  }
+
   car.angle += steer * TURN * dt * (car.speed / MAX) * Math.sign(car.speed) + (flat > 0 ? Math.sin(world.time * 22) * 0.5 * dt : 0);
   car.x += Math.cos(car.angle) * car.speed * dt;
   car.y += Math.sin(car.angle) * car.speed * dt;

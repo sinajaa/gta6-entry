@@ -342,6 +342,21 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
           addSmoke(car.x - cs * 14, car.y - sn * 14, 16, 8 + Math.random() * 6, 1.4 + Math.random() * 0.6);
         }
       }
+      // Asap ban belakang saat drift, dan bayar bonus setelah rantai selesai.
+      if (car.driftPayoff > 0) { ui.addMoney(car.driftPayoff); car.driftPayoff = 0; }
+      if (car.drifting) {
+        car.driftSmokeT = (car.driftSmokeT ?? 0) - dt;
+        if (car.driftSmokeT <= 0) {
+          car.driftSmokeT = 0.05;
+          const back = car.angle + Math.PI;
+          const cs = Math.cos(back), sn = Math.sin(back);
+          const side = car.angle + Math.PI / 2;
+          const sx = Math.cos(side), sy = Math.sin(side);
+          for (const sgn of [-1, 1]) {
+            addSmoke(car.x + cs * 18 + sx * sgn * 9, car.y + sn * 18 + sy * sgn * 9, 4, 6 + Math.random() * 4, 0.6 + Math.random() * 0.4);
+          }
+        }
+      }
     }
   }
 
