@@ -1,73 +1,67 @@
 # SUNNY CITY
 
-A 3D open-world crime game that runs offline in Chrome, built by an AI agent for the make.fun gta6-01 bounty.
+A 3D open-world crime game that runs offline in your browser, built with three.js.
 
-## At a glance
+## Features
 
-SUNNY CITY is a fully offline, three.js-rendered 3D sandbox with no build step and no network calls. Drive and steal cars through a living procedural city, fight police across a 5-star wanted system, run 8 chained story missions plus 3 side jobs, buy guns, and explore interiors. It ships with a day-night cycle, weather, radio, minimap, compass, photo mode, and save.
-
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-
-## What you can do
-
-- Explore a procedural city with 3 districts, and walk into interiors: a diner, a gun shop and a bank with a vault.
-- Play 8 chained story missions: courier, car chase, execution, escort, warehouse theft, race, police siege and a finale.
-- Switch between 5 weapons (pistol, compact SMG, SMG, shotgun, rifle) with a weapon wheel.
-- Feel every shot: per-weapon recoil and camera kick, muzzle flash lighting with tracers, hit markers and impact sparks, and tumbling shell casings.
-- Blow up cars before the cops get you — damaged vehicles scorch, deform, smoke and explode into a fireball with flying debris and a shockwave that shakes the screen.
-- Knock pedestrians off their feet with a short ragdoll-like tumble.
-- Raise a 5-star wanted level and face coordinated police: one cruiser blocks the road ahead, another comes from behind for a PIT manoeuvre, and spike strips appear on the road at three stars or more, alongside the police helicopter and roadblocks.
-- Watch a living city: cars keep lane discipline and stop at red traffic lights at intersections; pedestrians walk the sidewalks, cross at marked crossings, and flee when gunfire erupts nearby.
-- Steal cars, drive through traffic, and repair or repaint them at the garage.
-- Listen to 3 radio stations while driving.
-- Watch the day-night cycle turn, with periodic rain and lightning.
-- Find 12 hidden packages, follow the minimap and compass, and keep your progress with save.
+- **Driving** — steal any car, drive through traffic that keeps lanes and stops at red lights, and repair or repaint at the garage. Drifting scores cash and kicks up tire smoke.
+- **Shooting** — five weapons (pistol, compact SMG, SMG, shotgun, rifle) behind a weapon wheel, with recoil, tracers, muzzle flash, hit markers, and tumbling shell casings.
+- **Police** — a 5-star wanted level brings coordinated cops: roadblocks, PIT manoeuvres, spike strips, and a helicopter at higher stars.
+- **Weather** — a day-night cycle with periodic rain and lightning.
+- **Missions** — eight chained story missions plus six side jobs, with checkpoint respawn so a failed mission retries from its last objective.
+- **Side jobs** — bank heist, taxi, stunt jumps, a bounty chase, pizza delivery, and car repossession.
+- **Interiors** — walk into a diner, a gun shop, and a bank with a vault.
+- **Audio** — three radio stations and per-weapon sound.
+- **Save** — progress and settings persist in `localStorage`.
 
 ## Controls
+
+Keyboard and mouse:
 
 | Key | Action |
 |---|---|
 | WASD / arrows | Move, drive |
-| Shift | Sprint (nitro in a car with nitro) |
-| Mouse / F | Aim with the mouse; shoot with left button or F |
+| Shift | Sprint (nitro in a nitro-equipped car) |
+| Mouse / F | Aim; shoot with left button or F |
 | 1-5 | Select weapon |
 | G | Reload (compact SMG) |
 | Q (hold) | Weapon wheel |
-| E | Enter or exit a car, use doors and the garage |
+| E | Enter/exit car, use doors and the garage |
 | R | Next radio station (while driving) |
-| M | Full-screen map (districts, roads, mission markers, player arrow) |
-| Tab | Mission log (the eight missions and their state) |
-| P | Photo mode (orbit camera, save a screenshot) |
+| M | Full-screen map |
+| Tab | Mission log |
+| P | Photo mode |
 | Esc | Pause menu (Resume, Settings, Save, Quit) |
-| Enter | Start from the menu / save a screenshot in photo mode |
+| Enter | Start / save a screenshot |
 
-## Photo mode
+Touch (on phones and small screens): a virtual joystick steers, and on-screen buttons cover enter, action/shoot, a sprint toggle, handbrake, and pause.
 
-Press **P** to enter photo mode: the HUD is hidden and the camera orbits your character. Use the **arrow keys** to orbit and change height, and **Enter** to save a screenshot as a PNG. Press **P** or **Esc** to return to the game.
+## Missions
 
-The pause menu's **Settings** screen lets you change render quality, shadows, mouse sensitivity, and master volume; the choices are remembered between sessions.
+Story: courier delivery, car chase, target execution, escort protection, warehouse theft, checkpoint race, police siege, and a finale. Side jobs: bank heist, taxi, stunt jumps, live bounty, pizza delivery, and car repossession. Side jobs start from the mission log without advancing the story.
 
-## How it runs
+## Run
 
 ```bash
-python3 -m http.server 8080 --directory game
-# then open http://localhost:8080
+MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-No build step, no network. WebGL comes from the vendored three.js in `game/vendor/`.
+This packs `game/` and `screenshots/` into `out/` and builds the dossier. For a quick play test, serve the game directory with any static server (no build step, no network — WebGL comes from the vendored three.js in `game/vendor/`).
 
-## Under the hood
+## Screenshots
 
-- three.js renders the city, vehicles, interiors and effects.
-- Geometry is merged and textures are drawn on canvases, which keeps draw calls low.
-- Vehicles use a simple arcade physics model.
-- All art, names, characters and audio are original and generated in code.
+| # | Scene | Query |
+|---|---|---|
+| 1 | Street | `?shot=street&seed=1` |
+| 2 | Chase | `?shot=chase&seed=1` |
+| 3 | Firefight | `?shot=firefight&seed=1` |
+| 4 | Driving | `?shot=driving&seed=1` |
+
+Rendered screenshots live in `screenshots/`.
 
 ## Repository
 
-- `main.ts` - entry packer: copies `game/` and `screenshots/` to the output and builds the dossier
-- `game/` - `index.html` and `src/*.js` (world, render3d, vehicle, police, missions, combat, interiors, extras, ui, audio)
-- `screenshots/` - the four contact-sheet screenshots
-- `shots.json` - screenshot scene list (`?shot=...` URLs)
+- `main.ts` — entry packer: copies `game/` and `screenshots/` into the output and builds the dossier.
+- `game/src/*.js` — world, render, vehicle, police, missions, combat, interiors, extras, UI, audio.
+- `screenshots/` — exported screenshot scenes.
+- `shots.json` — the `?shot=...` scene list.
