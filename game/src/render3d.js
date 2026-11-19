@@ -999,6 +999,270 @@ export function buildWorldMeshes(gfx, world) {
   buildHeli(gfx);
   buildProps(gfx, world);
   buildMissionMarkers(gfx);
+  buildWaterfront(gfx);
+}
+
+// ------------------------------------------------------------- waterfront
+// Ocean, beach, pier and marina around the island edge. Everything is merged or
+// instanced so this whole seam adds only a handful of draw calls, and it never
+// touches the city tiles or gameplay logic (placed purely outside the grid).
+const OCEAN_SIZE = 6800;
+const OCEAN_Y = -4;
+const BEACH_W = 104;
+const PIER_CFG = { len: 336, width: 50, deck: 8, worldY: 2128 };
+const BOAT_COLORS = ['#e8ecef', '#3a6ea5', '#c0392b', '#e0b23a', '#2f6f4f', '#8e5fb0'];
+
+const oceanVert = `varying vec3 vWorldPos; varying vec3 vNormal; uniform float uTime;
+void main() {
+  vec3 p = position;
+  float t = uTime;
+  float w = sin(p.x * 0.02 + t * 0.7) * 1.5
+          + sin(p.z * 0.024 + t * 0.5) * 1.1
+          + sin((p.x + p.z) * 0.012 + t * 0.35) * 0.9;
+  p.y += w;
+  float dx = 0.02 * 1.5 * cos(p.x * 0.02 + t * 0.7) + 0.012 * 0.9 * cos((p.x + p.z) * 0.012 + t * 0.35);
+  float dz = 0.024 * 1.1 * cos(p.z * 0.024 + t * 0.5) + 0.012 * 0.9 * cos((p.x + p.z) * 0.012 + t * 0.35);
+  vNormal = normalize(vec3(-dx, 1.0, -dz));
+  vec4 wp = modelMatrix * vec4(p, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const oceanFrag = `uniform float uTime; uniform vec3 uSunDir; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec2 uIslandHalf; uniform float uNight;
+varying vec3 vWorldPos; varying vec3 vNormal;
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  vec3 L = normalize(uSunDir);
+  float lum = 0.5 + 0.5 * dot(N, L);
+  vec3 col = mix(uShallow, uDeep, clamp(lum, 0.0, 1.0));
+  vec3 R = reflect(-L, N);
+  float spec = pow(max(dot(R, V), 0.0), 150.0);
+  col += vec3(1.0, 1.0, 1.0) * spec * 1.6;
+  vec2 q = vWorldPos.xz * 0.55;
+  float g = hash21(floor(q + uTime * 2.0));
+  col += vec3(1.0, 0.95, 0.85) * step(0.985, g) * 0.55 * smoothstep(3.0, 12.0, spec);
+  float d = max(abs(vWorldPos.x) - uIslandHalf.x, abs(vWorldPos.z) - uIslandHalf.y);
+  float shore = 1.0 - smoothstep(0.0, 260.0, d);
+  col += vec3(1.0, 0.98, 0.90) * shore * 0.22 * (0.5 + 0.5 * sin(vWorldPos.x * 0.05 + vWorldPos.z * 0.05 + uTime * 1.5));
+  col *= mix(vec3(0.45, 0.5, 0.65), vec3(1.0), 1.0 - uNight);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function flatQuad(cx, cz, sx, sz) {
+  const g = new THREE.PlaneGeometry(sx, sz);
+  g.rotateX(-Math.PI / 2);
+  g.translate(cx, 0, cz);
+  return g;
+}
+
+function buildPalmGeometry() {
+  const parts = [{ geo: new THREE.CylinderGeometry(2.2, 4.0, 28, 7).translate(0, 14, 0), color: '#7a5c3e' }];
+  for (let i = 0; i < 6; i++) {
+    const fr = new THREE.ConeGeometry(4.5, 24, 4);
+    fr.rotateZ(-0.85);
+    fr.translate(0, 24, 0);
+    fr.rotateY((i / 6) * Math.PI * 2 + 0.3);
+    parts.push({ geo: fr, color: '#3f9a4a' });
+  }
+  for (let i = 0; i < 3; i++) {
+    const fr = new THREE.ConeGeometry(3, 16, 4);
+    fr.rotateZ(-0.3);
+    fr.translate(0, 26, 0);
+    fr.rotateY((i / 3) * Math.PI * 2 + 1.2);
+    parts.push({ geo: fr, color: '#58b05a' });
+  }
+  return mergeColored(parts);
+}
+
+function buildBoatGeometry() {
+  return mergeColored([
+    { geo: new THREE.BoxGeometry(42, 6, 14).translate(0, 3, 0), color: '#ffffff' },
+    { geo: new THREE.BoxGeometry(43, 1.5, 14.5).translate(0, 6.5, 0), color: '#ffffff' },
+    { geo: new THREE.BoxGeometry(14, 7, 12).translate(6, 9.5, 0), color: '#35515a' },
+    { geo: new THREE.BoxGeometry(14, 1.2, 12).translate(6, 13, 0), color: '#f0ede4' },
+  ]);
+}
+
+function buildWaterfront(gfx) {
+  // Ocean: one large animated plane below the island.
+  const oceanGeo = new THREE.PlaneGeometry(OCEAN_SIZE, OCEAN_SIZE, 96, 96);
+  oceanGeo.rotateX(-Math.PI / 2);
+  const oceanMat = new THREE.ShaderMaterial({
+    vertexShader: oceanVert,
+    fragmentShader: oceanFrag,
+    uniforms: {
+      uTime: { value: 0 },
+      uSunDir: { value: SUN_OFFSET.clone().normalize() },
+      uDeep: { value: new THREE.Color('#1c4a6e') },
+      uShallow: { value: new THREE.Color('#2f7fa6') },
+      uIslandHalf: { value: new THREE.Vector2(WORLD_W / 2, WORLD_H / 2) },
+      uNight: { value: 0 },
+    },
+  });
+  const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+  ocean.position.y = OCEAN_Y;
+  ocean.frustumCulled = false;
+  gfx.scene.add(ocean);
+  gfx.ocean = { mesh: ocean, mat: oceanMat };
+
+  const m4 = new THREE.Matrix4(), p3 = new THREE.Vector3(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3(), c3 = new THREE.Color();
+  const H = WORLD_W / 2;
+
+  // Sand beach ring framing the island edge (just outside the city grid).
+  const sandParts = [
+    { geo: flatQuad(0, -H - BEACH_W / 2, WORLD_W, BEACH_W), color: '#e8d3a2' },
+    { geo: flatQuad(0, H + BEACH_W / 2, WORLD_W, BEACH_W), color: '#e6d09c' },
+    { geo: flatQuad(-H - BEACH_W / 2, 0, BEACH_W, WORLD_H), color: '#e8d3a2' },
+    { geo: flatQuad(H + BEACH_W / 2, 0, BEACH_W, WORLD_H), color: '#e6d09c' },
+    { geo: flatQuad(-H - BEACH_W / 2, -H - BEACH_W / 2, BEACH_W, BEACH_W), color: '#d6c087' },
+    { geo: flatQuad(H + BEACH_W / 2, -H - BEACH_W / 2, BEACH_W, BEACH_W), color: '#d6c087' },
+    { geo: flatQuad(-H - BEACH_W / 2, H + BEACH_W / 2, BEACH_W, BEACH_W), color: '#d6c087' },
+    { geo: flatQuad(H + BEACH_W / 2, H + BEACH_W / 2, BEACH_W, BEACH_W), color: '#d6c087' },
+  ];
+  const sandMesh = new THREE.Mesh(mergeColored(sandParts), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  sandMesh.receiveShadow = true;
+  gfx.scene.add(sandMesh);
+  gfx.beach = sandMesh;
+
+  // Palm trees sprinkled around the beach perimeter.
+  const rand = makeRand(98);
+  const palms = [];
+  for (let i = 0; i < 54; i++) {
+    const side = Math.floor(rand() * 4);
+    const off = 8 + rand() * (BEACH_W - 18);
+    if (side === 0) palms.push({ x: -H + rand() * WORLD_W, z: -H - off });
+    else if (side === 1) palms.push({ x: -H + rand() * WORLD_W, z: H + off });
+    else if (side === 2) palms.push({ x: -H - off, z: -H + rand() * WORLD_H });
+    else palms.push({ x: H + off, z: -H + rand() * WORLD_H });
+  }
+  const palmMesh = new THREE.InstancedMesh(buildPalmGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), palms.length);
+  palms.forEach((p, i) => {
+    q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
+    const sc = 0.85 + rand() * 0.5;
+    m4.compose(p3.set(p.x, 0, p.z), q4, s3.set(sc, sc, sc));
+    palmMesh.setMatrixAt(i, m4);
+    palmMesh.setColorAt(i, c3.setScalar(0.9 + rand() * 0.25));
+  });
+  palmMesh.instanceMatrix.needsUpdate = true;
+  if (palmMesh.instanceColor) palmMesh.instanceColor.needsUpdate = true;
+  palmMesh.castShadow = true;
+  palmMesh.frustumCulled = false;
+  gfx.scene.add(palmMesh);
+  gfx.palmMesh = palmMesh;
+
+  // Beach umbrellas, clustered near the pier and scattered elsewhere.
+  const pz0 = PIER_CFG.worldY - WORLD_H / 2;
+  const umSpots = [];
+  for (let i = 0; i < 16; i++) {
+    if (i < 10) umSpots.push({ x: H + 22 + rand() * (BEACH_W - 44), z: pz0 + (rand() - 0.5) * 640 });
+    else {
+      const side = Math.floor(rand() * 4);
+      if (side === 0) umSpots.push({ x: -H + rand() * WORLD_W, z: -H - 22 - rand() * (BEACH_W - 44) });
+      else if (side === 1) umSpots.push({ x: -H + rand() * WORLD_W, z: H + 22 + rand() * (BEACH_W - 44) });
+      else if (side === 2) umSpots.push({ x: -H - 22 - rand() * (BEACH_W - 44), z: -H + rand() * WORLD_H });
+      else umSpots.push({ x: H + 22 + rand() * (BEACH_W - 44), z: -H + rand() * WORLD_H });
+    }
+  }
+  const umbrellaGeo = mergeColored([
+    { geo: new THREE.CylinderGeometry(1.4, 1.4, 30, 6).translate(0, 15, 0), color: '#e8e2d4' },
+    { geo: new THREE.ConeGeometry(15, 11, 12).translate(0, 34, 0), color: '#ffffff' },
+  ]);
+  const umbrellaMesh = new THREE.InstancedMesh(umbrellaGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), umSpots.length);
+  umSpots.forEach((u, i) => {
+    const sc = 0.95 + rand() * 0.4;
+    m4.compose(p3.set(u.x, 0, u.z), q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2), s3.set(sc, sc, sc));
+    umbrellaMesh.setMatrixAt(i, m4);
+    umbrellaMesh.setColorAt(i, c3.set(UMBRELLA_COLORS[i % UMBRELLA_COLORS.length]));
+  });
+  umbrellaMesh.instanceMatrix.needsUpdate = true;
+  if (umbrellaMesh.instanceColor) umbrellaMesh.instanceColor.needsUpdate = true;
+  umbrellaMesh.castShadow = true;
+  umbrellaMesh.frustumCulled = false;
+  gfx.scene.add(umbrellaMesh);
+  gfx.beachUmbrellaMesh = umbrellaMesh;
+
+  // Wooden pier on stilts, with railings and lamps, off the east edge.
+  const px = H, pz = pz0, len = PIER_CFG.len, width = PIER_CFG.width, deckY = PIER_CFG.deck;
+  const pierParts = [
+    { geo: new THREE.BoxGeometry(len, 3, width).translate(px + len / 2, deckY, pz), color: '#b58a5a' },
+    { geo: new THREE.BoxGeometry(len, 1, width + 2).translate(px + len / 2, deckY + 1.5, pz), color: '#c99a68' },
+  ];
+  const n = Math.floor(len / 48) + 1;
+  const step = (len - 16) / (n - 1);
+  for (let i = 0; i < n; i++) {
+    const sx = px + 8 + i * step;
+    for (const sz of [pz - width / 2 + 6, pz + width / 2 - 6]) pierParts.push({ geo: new THREE.CylinderGeometry(2.2, 2.4, 14, 6).translate(sx, 1.5, sz), color: '#5e4630' });
+  }
+  const railY = deckY + 3;
+  const lampSpots = [];
+  for (const side of [-1, 1]) {
+    const sz = pz + side * (width / 2 - 3);
+    for (let i = 0; i < n; i++) {
+      const sx = px + 8 + i * step;
+      pierParts.push({ geo: new THREE.BoxGeometry(2, 8, 2).translate(sx, railY + 3, sz), color: '#8a6a45' });
+      lampSpots.push({ x: sx, z: sz });
+    }
+    pierParts.push({ geo: new THREE.BoxGeometry(len, 1.2, 1.6).translate(px + len / 2, railY + 7, sz), color: '#8a6a45' });
+    pierParts.push({ geo: new THREE.BoxGeometry(len, 1, 1.2).translate(px + len / 2, railY + 3.5, sz), color: '#9a7a52' });
+  }
+  const pierMesh = new THREE.Mesh(mergeColored(pierParts), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  pierMesh.castShadow = pierMesh.receiveShadow = true;
+  gfx.scene.add(pierMesh);
+  gfx.pier = pierMesh;
+
+  const lampGeo = new THREE.BoxGeometry(3.5, 4, 3.5);
+  const lampMesh = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xffe0a0, toneMapped: false, fog: false }), lampSpots.length);
+  lampSpots.forEach((s, i) => {
+    m4.compose(p3.set(s.x, railY + 9, s.z), q4.identity(), s3.set(1, 1, 1));
+    lampMesh.setMatrixAt(i, m4);
+    lampMesh.setColorAt(i, c3.set('#ffd9a0'));
+  });
+  lampMesh.instanceMatrix.needsUpdate = true;
+  if (lampMesh.instanceColor) lampMesh.instanceColor.needsUpdate = true;
+  lampMesh.frustumCulled = false;
+  gfx.scene.add(lampMesh);
+  gfx.pierLamps = lampMesh;
+
+  // Small marina: a floating dock and moored boats beside the pier.
+  const dockX = H + 46, dockLen = 420, dockW = 26;
+  const dockParts = [];
+  for (const side of [-1, 1]) dockParts.push({ geo: new THREE.BoxGeometry(10, 3, dockLen).translate(dockX + side * (dockW / 2 - 5), -3, pz), color: '#3f6f8f' });
+  dockParts.push({ geo: new THREE.BoxGeometry(dockW, 1.5, dockLen).translate(dockX, 0.5, pz), color: '#b58a5a' });
+  for (const off of [-120, 0, 120]) dockParts.push({ geo: new THREE.BoxGeometry(40, 1.5, dockW).translate(dockX + 20, 0.5, pz + off), color: '#b58a5a' });
+  const dockMesh = new THREE.Mesh(mergeColored(dockParts), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  dockMesh.castShadow = dockMesh.receiveShadow = true;
+  gfx.scene.add(dockMesh);
+  gfx.marina = dockMesh;
+
+  const boatGeo = buildBoatGeometry();
+  const boatSpots = [];
+  for (const off of [-150, -60, 60, 150, -90, 90]) {
+    const side = off < 0 ? -1 : 1;
+    boatSpots.push({ x: dockX + 20 + side * 32, z: pz + off, a: side * Math.PI / 2 });
+  }
+  const boatMesh = new THREE.InstancedMesh(boatGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), boatSpots.length);
+  boatSpots.forEach((b, i) => {
+    m4.compose(p3.set(b.x, -1, b.z), q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.a), s3.set(1, 1, 1));
+    boatMesh.setMatrixAt(i, m4);
+    boatMesh.setColorAt(i, c3.set(BOAT_COLORS[i % BOAT_COLORS.length]));
+  });
+  boatMesh.instanceMatrix.needsUpdate = true;
+  if (boatMesh.instanceColor) boatMesh.instanceColor.needsUpdate = true;
+  boatMesh.castShadow = true;
+  boatMesh.frustumCulled = false;
+  gfx.scene.add(boatMesh);
+  gfx.marinaBoats = boatMesh;
+}
+
+function syncOcean(gfx) {
+  const o = gfx.ocean;
+  if (!o) return;
+  o.mat.uniforms.uTime.value = performance.now() / 1000;
+  const d = gfx.sunDirOverride || gfx.skySunDir || SUN_DIR;
+  if (d.lengthSq() > 1e-6) o.mat.uniforms.uSunDir.value.copy(d).normalize();
+  o.mat.uniforms.uNight.value = gfx.night || 0;
 }
 
 function buildCarGeometry() {
@@ -1813,6 +2077,7 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   gfx.sun.target.position.set(tx, 0, tz);
   if (gfx.moon) gfx.moon.target.position.set(tx, 0, tz);
   updateDayNight(gfx);
+  syncOcean(gfx);
   gfx.sun.position.set(tx, 0, tz).add(gfx.sunDirOverride || SUN_DIR);
   if (gfx.moon) gfx.moon.position.set(tx, 0, tz).add(MOON_DIR);
   fitActiveShadow(gfx);
