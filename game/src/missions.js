@@ -56,6 +56,8 @@ export function createMissions(world, ui, audio) {
       refreshMarkers();
     },
 
+    abort() { if (m.active) fail(); },
+
     get objectiveText() {
       const a = m.active;
       if (!a) return gap > 0 ? 'MISI BERIKUTNYA...' : '';

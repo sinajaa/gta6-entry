@@ -8,6 +8,7 @@ import { createUI } from './ui.js';
 import { createPeds, updatePeds, alarmPeds } from './peds.js';
 import { createAudio } from './audio.js';
 import { createMissions } from './missions.js';
+import { createCombat } from './combat.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
 const canvas = document.getElementById('game');
@@ -32,11 +33,17 @@ const ui = createUI(document.getElementById('hud'));
 const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 const SIREN_RANGE = 600;
+const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
 updateCamera3D(gfx.camera, player, 'walk', 1);
-renderFrame(gfx, world, player, 0, police, peds);
+renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
 function startGame() { audio.start(); audio.click(); if (!missions.active) missions.next(); }
-addEventListener('pointerdown', () => { if (ui.click() === 'start') startGame(); });
+addEventListener('pointerdown', (e) => {
+  if (ui.click() === 'start') startGame();
+  else if (e.button === 0 && ui.state === 'PLAYING') combat.mouseDown = true;
+});
+addEventListener('pointerup', () => { combat.mouseDown = false; });
+addEventListener('pointermove', (e) => combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()));
 addEventListener('beforeunload', () => ui.save());
 
 addEventListener('keydown', (e) => {
@@ -59,17 +66,22 @@ addEventListener('blur', () => keys.clear());
 
 let last = performance.now(), fps = 0, frames = 0, fpsTimer = 0;
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const rawDt = Math.min(0.05, (now - last) / 1000);
+  let dt = rawDt;
   last = now;
-  frames++; fpsTimer += dt;
+  frames++; fpsTimer += rawDt;
   if (fpsTimer >= 0.5) { fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0; }
-  ui.update(dt);
-  if (ui.state !== 'PLAYING') { requestAnimationFrame(frame); return; }
+  ui.update(rawDt);
+  canvas.style.filter = ui.state === 'DEAD' ? 'grayscale(0.85) contrast(1.1)' : '';
+  if (ui.state !== 'PLAYING' && ui.state !== 'DEAD') { requestAnimationFrame(frame); return; }
+  const dead = ui.state === 'DEAD';
+  if (dead) dt *= 0.3;
+  const input = dead ? new Set() : keys;
   const car = player.car;
   crashCooldown = Math.max(0, crashCooldown - dt);
   if (car) {
     const speedBefore = Math.abs(car.speed);
-    updateDrivenCar(car, keys, world, dt);
+    updateDrivenCar(car, input, world, dt);
     if (speedBefore > CRASH_MIN_SPEED && speedBefore - Math.abs(car.speed) > CRASH_SPEED_DROP && crashCooldown === 0) {
       addHeat(world, 25, 'crash');
       audio.crash((speedBefore - Math.abs(car.speed)) / 200);
@@ -77,7 +89,7 @@ function frame(now) {
       crashCooldown = CRASH_COOLDOWN;
     }
   }
-  else updatePlayer(player, keys, world, dt);
+  else updatePlayer(player, input, world, dt);
   updateTraffic(world, dt);
   updateWanted(police, player, dt);
   updatePolice(police, world, player, dt);
@@ -86,8 +98,9 @@ function frame(now) {
   }
   updatePeds(world, player, peds, dt);
   missions.update(dt, player, world);
-  updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
-  renderFrame(gfx, world, player, fps, police, peds, missions);
+  combat.update(dt, keys, rawDt);
+  updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt);
+  renderFrame(gfx, world, player, fps, police, peds, missions, combat);
   const focus = car || player;
   let nearest = Infinity;
   for (const cop of police.cars) nearest = Math.min(nearest, Math.hypot(cop.x - focus.x, cop.y - focus.y));
@@ -98,4 +111,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
+window.__game = { combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };

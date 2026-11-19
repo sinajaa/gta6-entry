@@ -1,7 +1,7 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
 const SAVE_KEY = 'sunnycity.save.v1';
 const W = 960, H = 540, TOAST_SECONDS = 2;
-const CONTROLS = ['WASD / Panah — jalan & kemudi', 'E — masuk / keluar mobil', 'F — aksi', 'ESC — pause'];
+const CONTROLS = ['WASD / Panah — jalan & kemudi', 'E — masuk / keluar mobil', 'F / Klik kiri — tembak', 'Mouse — bidik', '1 / 2 — pistol / SMG', 'ESC — pause'];
 
 function loadSave() {
   try {
@@ -48,6 +48,7 @@ export function createUI(hud) {
       ctx = ctx || (hud && hud.getContext && hud.getContext('2d'));
       if (!ctx) return;
       if (ui.state === 'PLAYING') drawPlaying(ctx, ui);
+      else if (ui.state === 'DEAD') drawDead(ctx, ui);
       else drawOverlay(ctx, ui);
     },
   };
@@ -68,6 +69,55 @@ function drawPlaying(ctx, ui) {
     ctx.strokeText(t.text, W - 20, 126 + i * 26); ctx.fillText(t.text, W - 20, 126 + i * 26);
   });
   ctx.restore();
+  drawWeapon(ctx, ui);
+  drawHitmarker(ctx, ui);
+}
+
+const WEAPON_LABEL = { pistol: 'PISTOL', smg: 'SMG' };
+function drawWeapon(ctx, ui) {
+  if (!ui.weapon) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(W - 150, H - 70, 130, 36);
+  ctx.fillStyle = '#fff';
+  if (ui.weapon === 'pistol') { ctx.fillRect(W - 140, H - 58, 22, 6); ctx.fillRect(W - 140, H - 54, 7, 12); }
+  else { ctx.fillRect(W - 142, H - 58, 30, 6); ctx.fillRect(W - 136, H - 54, 6, 12); ctx.fillRect(W - 124, H - 54, 5, 8); }
+  ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText(WEAPON_LABEL[ui.weapon] + ' [' + (ui.weapon === 'pistol' ? 1 : 2) + ']', W - 28, H - 46);
+  ctx.restore();
+}
+
+function drawHitmarker(ctx, ui) {
+  const h = ui.hit;
+  if (!h || h.t <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, h.t / 0.12);
+  ctx.strokeStyle = h.kill ? '#ff2a2a' : '#fff'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(h.x - 10, h.y - 10); ctx.lineTo(h.x - 4, h.y - 4);
+  ctx.moveTo(h.x + 10, h.y - 10); ctx.lineTo(h.x + 4, h.y - 4);
+  ctx.moveTo(h.x - 10, h.y + 10); ctx.lineTo(h.x - 4, h.y + 4);
+  ctx.moveTo(h.x + 10, h.y + 10); ctx.lineTo(h.x + 4, h.y + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDead(ctx, ui) {
+  const d = ui.dead;
+  if (!d) return;
+  const wasted = d.kind === 'WASTED';
+  ctx.save();
+  ctx.fillStyle = `rgba(30,30,30,${Math.min(0.55, d.t * 1.2).toFixed(3)})`;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = Math.min(1, d.t * 2);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 110px sans-serif';
+  ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillStyle = wasted ? '#d11a1a' : '#fff';
+  ctx.strokeText(d.kind, W / 2, H / 2 + 30); ctx.fillText(d.kind, W / 2, H / 2 + 30);
+  ctx.font = 'bold 22px sans-serif'; ctx.fillStyle = '#ddd';
+  ctx.fillText(wasted ? 'Kamu tewas' : 'Kamu ditangkap polisi', W / 2, H / 2 + 70);
+  ctx.restore();
+  drawWeapon(ctx, ui);
 }
 
 function drawOverlay(ctx, ui) {

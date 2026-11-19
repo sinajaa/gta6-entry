@@ -90,7 +90,103 @@ export function initRenderer(canvas, hudCanvas, world) {
   const camera = new THREE.PerspectiveCamera(46, 960 / 540, 1, 2600);
   const gfx = { renderer, scene, camera, sun, software, shadowSize, frameNo: 0, hud: hudCanvas.getContext('2d'), carMesh: null, playerMesh: null, lightMesh: null, lightPhase: -1 };
   buildWorldMeshes(gfx, world);
+  buildCombatFx(gfx);
   return gfx;
+}
+
+const TRACER_N = 32, FLASH_N = 8, SPARK_N = 48;
+const fxTmp = new THREE.Color();
+function buildCombatFx(gfx) {
+  const add = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, vertexColors: true, fog: false };
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRACER_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
+  lineGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRACER_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
+  const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial(add));
+  lines.frustumCulled = false; lines.renderOrder = 10;
+
+  const quadIndex = (n) => { const idx = []; for (let i = 0; i < n; i++) idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3); return idx; };
+  const makeQuads = (n) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setIndex(quadIndex(n));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ ...add, side: THREE.DoubleSide }));
+    m.frustumCulled = false; m.renderOrder = 11;
+    return m;
+  };
+  const tracerQuads = makeQuads(TRACER_N), flashQuads = makeQuads(FLASH_N);
+
+  const sparkMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 2.2, 2.2), new THREE.MeshBasicMaterial({ toneMapped: false, fog: false }), SPARK_N);
+  sparkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  sparkMesh.setColorAt(0, fxTmp.set('#ff8a1f'));
+  sparkMesh.frustumCulled = false; sparkMesh.count = 0;
+
+  const lights = [];
+  if (!gfx.software) {
+    for (let i = 0; i < 2; i++) {
+      const l = new THREE.PointLight(0xffb060, 0, 160, 2);
+      gfx.scene.add(l); lights.push(l);
+    }
+  }
+  gfx.scene.add(lines, tracerQuads, flashQuads, sparkMesh);
+  gfx.fx = { lines, tracerQuads, flashQuads, sparkMesh, lights };
+}
+
+const fxM = new THREE.Matrix4(), fxP = new THREE.Vector3(), fxQ = new THREE.Quaternion(), fxS = new THREE.Vector3(1, 1, 1);
+const SPARK_COLORS = ['#ff8a1f', '#ff2a1a'];
+function writeQuad(g, i, ax, ay, az, bx, by, bz, hw, r, gg, b) {
+  const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
+  const nx = -dz / len * hw, nz = dx / len * hw;
+  const p = g.attributes.position.array, col = g.attributes.color.array, o = i * 12;
+  p.set([ax - nx, ay, az - nz, ax + nx, ay, az + nz, bx + nx, by, bz + nz, bx - nx, by, bz - nz], o);
+  for (let k = 0; k < 4; k++) { col[o + k * 3] = r; col[o + k * 3 + 1] = gg; col[o + k * 3 + 2] = b; }
+}
+
+export function syncCombat(gfx, combat) {
+  const fx = gfx.fx;
+  if (!fx || !combat) return;
+  const ox = WORLD_W / 2, oz = WORLD_H / 2;
+  const lp = fx.lines.geometry.attributes.position.array, lc = fx.lines.geometry.attributes.color.array;
+  const tg = fx.tracerQuads.geometry;
+  combat.tracers.forEach((t, i) => {
+    const a = t.t > 0 ? Math.min(1, t.t / t.max) * t.dim : 0;
+    const [r, g, b] = t.color;
+    lp.set([t.x0 - ox, t.z0, t.y0 - oz, t.x1 - ox, t.z1, t.y1 - oz], i * 6);
+    lc.set([r * a, g * a, b * a, r * a, g * a, b * a], i * 6);
+    writeQuad(tg, i, t.x0 - ox, t.z0, t.y0 - oz, t.x1 - ox, t.z1, t.y1 - oz, t.w * 0.5, r * a * 0.7, g * a * 0.7, b * a * 0.7);
+  });
+  fx.lines.geometry.attributes.position.needsUpdate = fx.lines.geometry.attributes.color.needsUpdate = true;
+  tg.attributes.position.needsUpdate = tg.attributes.color.needsUpdate = true;
+
+  const fg = fx.flashQuads.geometry;
+  combat.flashes.forEach((f, i) => {
+    const a = f.t > 0 ? Math.min(1, f.t / f.max) : 0;
+    const [r, g, b] = f.color;
+    const s = f.size * 0.5, c = Math.cos(f.angle), n = Math.sin(f.angle);
+    const x = f.x - ox, z = f.y - oz;
+    writeQuad(fg, i, x - c * s * 0.3, 14, z - n * s * 0.3, x + c * s, 14, z + n * s, s * 0.45, r * a, g * a, b * a);
+  });
+  fg.attributes.position.needsUpdate = fg.attributes.color.needsUpdate = true;
+
+  let n = 0;
+  for (const s of combat.sparks) {
+    if (s.t <= 0) continue;
+    fxP.set(s.x - ox, s.z, s.y - oz);
+    fxM.compose(fxP, fxQ, fxS.setScalar(Math.min(1, s.t * 4)));
+    fx.sparkMesh.setMatrixAt(n, fxM);
+    fx.sparkMesh.setColorAt(n, fxTmp.set(SPARK_COLORS[s.hot]));
+    n++;
+  }
+  fx.sparkMesh.count = n;
+  fx.sparkMesh.instanceMatrix.needsUpdate = true;
+  if (fx.sparkMesh.instanceColor) fx.sparkMesh.instanceColor.needsUpdate = true;
+
+  fx.lights.forEach((l, i) => {
+    const f = combat.flashes[(combat.flashCursor - 1 - i + FLASH_N * 8) % FLASH_N];
+    const on = f && f.t > 0;
+    l.intensity = on ? 900 * (f.t / f.max) : 0;
+    if (on) { l.position.set(f.x - ox, 20, f.y - oz); l.color.setRGB(f.color[0], f.color[1], f.color[2]); }
+  });
 }
 
 export function makeGroundTexture(world, renderer) {
@@ -643,17 +739,49 @@ function syncPeds(gfx, player, peds) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
-export function renderFrame(gfx, world, player, fps, police, peds, missions) {
+export function renderFrame(gfx, world, player, fps, police, peds, missions, combat) {
   syncActors(gfx, world, player);
   syncPeds(gfx, player, peds);
   syncMarkers(gfx, missions);
+  syncCombat(gfx, combat);
+  if (combat) combat.applyShake(gfx.camera);
   const actor = player.car || player;
   const tx = actor.x - WORLD_W / 2, tz = actor.y - WORLD_H / 2;
   gfx.sun.target.position.set(tx, 0, tz);
   gfx.sun.position.set(tx, 0, tz).add(SUN_OFFSET);
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
   gfx.renderer.render(gfx.scene, gfx.camera);
-  drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera);
+  if (combat) combat.clearShake(gfx.camera);
+  drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera, combat);
+}
+
+const hudProj = new THREE.Vector3();
+function drawCombatHud(ctx, p, camera, combat) {
+  if (combat.vignette > 0) {
+    const a = Math.min(1, combat.vignette / 0.35) * 0.55;
+    const g = ctx.createRadialGradient(480, 270, 180, 480, 270, 620);
+    g.addColorStop(0, 'rgba(220,0,0,0)');
+    g.addColorStop(1, `rgba(220,0,0,${a.toFixed(3)})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 540);
+  }
+  if (combat.bustProgress > 0 && camera) {
+    const f = p.car || p;
+    hudProj.set(f.x - WORLD_W / 2, 20, f.y - WORLD_H / 2).project(camera);
+    const sx = (hudProj.x + 1) / 2 * 960, sy = (1 - hudProj.y) / 2 * 540;
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.arc(sx, sy, 34, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#3d8bff';
+    ctx.beginPath(); ctx.arc(sx, sy, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, combat.bustProgress)); ctx.stroke();
+  }
+  if (!combat.dead) {
+    const { x, y } = combat.mouse;
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.moveTo(x - 15, y); ctx.lineTo(x - 5, y); ctx.moveTo(x + 5, y); ctx.lineTo(x + 15, y);
+    ctx.moveTo(x, y - 15); ctx.lineTo(x, y - 5); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 15);
+    ctx.stroke(); ctx.shadowBlur = 0;
+  }
 }
 
 const MAP_SIZE = 320, MAP_R = 75, MAP_VIEW = 700, MAP_CX = 20 + MAP_R, MAP_CY = 540 - 20 - MAP_R;
@@ -708,7 +836,7 @@ function bar(ctx, x, y, w, h, frac, fill, back = 'rgba(0,0,0,0.55)') {
   ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, Math.max(0, (w - 2) * Math.min(1, Math.max(0, frac))), h - 2);
 }
 
-export function drawHud(ctx, world, p, fps, police, missions, camera) {
+export function drawHud(ctx, world, p, fps, police, missions, camera, combat) {
   ctx.clearRect(0, 0, 960, 540);
   const car = p.car;
   const debug = typeof location !== 'undefined' && location.search.includes('debug');
@@ -724,6 +852,7 @@ export function drawHud(ctx, world, p, fps, police, missions, camera) {
     ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 540);
   }
 
+  if (combat) drawCombatHud(ctx, p, camera, combat);
   drawMinimap(ctx, world, p, police);
   const bx = MAP_CX - MAP_R, by = MAP_CY - MAP_R - 22;
   const hp = p.health != null ? p.health / (p.maxHealth || 100) : 1;
