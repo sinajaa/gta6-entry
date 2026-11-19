@@ -306,6 +306,15 @@ function updateDayNight(gfx) {
     gfx.lampHead.material.color.setScalar(0.3 + 0.7 * n);
     gfx.lampPool.visible = n > 0.02;
     gfx.lampPool.material.opacity = 0.95 * n;
+    if (gfx.lampGlow) {
+      gfx.lampGlow.visible = n > 0.02;
+      gfx.lampGlow.material.opacity = 0.35 * n;
+    }
+  }
+  if (gfx.lampStreaks) {
+    const sw = (gfx.wetAmount || 0) * (0.25 + 0.75 * n);
+    gfx.lampStreaks.visible = sw > 0.02;
+    gfx.lampStreaks.material.opacity = 0.4 * sw;
   }
 }
 const SUN_DIR = new THREE.Vector3();
@@ -1899,6 +1908,55 @@ function buildProps(gfx, world) {
     gfx.scene.add(head, pool);
     gfx.lampHead = head;
     gfx.lampPool = pool;
+
+    const gc = document.createElement('canvas');
+    gc.width = gc.height = 64;
+    const gx = gc.getContext('2d');
+    const grad = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    gx.fillStyle = grad;
+    gx.fillRect(0, 0, 64, 64);
+    const glowTex = new THREE.CanvasTexture(gc);
+    const gp = new Float32Array(lamps.length * 3);
+    lamps.forEach((l, i) => {
+      gp[i * 3] = l.x - WORLD_W / 2; gp[i * 3 + 1] = l.h; gp[i * 3 + 2] = l.z - WORLD_H / 2;
+    });
+    const glowGeo = new THREE.BufferGeometry();
+    glowGeo.setAttribute('position', new THREE.BufferAttribute(gp, 3));
+    const glow = new THREE.Points(glowGeo, new THREE.PointsMaterial({
+      map: glowTex, color: 0xffb860, size: 26, sizeAttenuation: true, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
+    }));
+    glow.frustumCulled = false;
+    glow.visible = false;
+    gfx.scene.add(glow);
+    gfx.lampGlow = glow;
+
+    const sc = document.createElement('canvas');
+    sc.width = 16; sc.height = 64;
+    const sx2 = sc.getContext('2d');
+    const sg = sx2.createLinearGradient(0, 0, 0, 64);
+    sg.addColorStop(0, 'rgba(255,255,255,0)');
+    sg.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    sx2.fillStyle = sg;
+    sx2.fillRect(4, 0, 8, 64);
+    const streaks = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), color: 0xffd9a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
+      lamps.length,
+    );
+    lamps.forEach((l, i) => {
+      m4.compose(p3.set(l.x - WORLD_W / 2, 0.4, l.z - WORLD_H / 2), blobFlat, s3.set(5, 70, 1));
+      streaks.setMatrixAt(i, m4);
+    });
+    streaks.frustumCulled = false;
+    streaks.visible = false;
+    streaks.renderOrder = 1;
+    gfx.scene.add(streaks);
+    gfx.lampStreaks = streaks;
   }
 
   for (let i = 0; i < 90; i++) {

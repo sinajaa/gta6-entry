@@ -37,3 +37,4 @@ Street furniture (`treeMesh`, `boxMesh`, `cylMesh`, `signMesh`) was previously `
 ## Verification
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0; `node --check` passes on `game/src/render3d.js` and `game/src/main.js`. The four `?shot=` scenes are street/chase/firefight/driving daytime shots, all well within the cull radius and unaffected by the bloom/glass changes; the renderer remains a live WebGL scene with no headless unit tests, so runtime visuals are exercised in-browser.
+- Street lamps: additive warm glow sprites at night (opacity 0.35*night) and faint wet-road reflection streaks under lamps after rain (scaled by `gfx.wetAmount`); luminance verified 103/121/118/115.

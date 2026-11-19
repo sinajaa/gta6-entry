@@ -350,6 +350,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
       rainGeo.setDrawRange(0, Math.floor(RAIN_N * rain) * 2);
       rainMat.opacity = 0.18 + 0.42 * rain;
     }
+    gfx.wetAmount = wet;
     sheen.visible = wet > 0.02;
     sheenMat.opacity = wet * (0.6 + 0.4 * gfx.night) + flash * 0.3;
     if (gfx.ground) gfx.ground.material.color.setScalar(1 - 0.32 * wet);
