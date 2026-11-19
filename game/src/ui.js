@@ -157,7 +157,7 @@ export function createUI(hud) {
       ui.logStartSelected();
     },
     openPause() {
-      ui.state = 'PAUSED'; ui.navScreen = 'main'; ui.navIdx = 0; ui.navMenu = true; ui.save();
+      ui.state = 'PAUSED'; ui.navScreen = 'main'; ui.navIdx = 0; ui.navMenu = true; ui.save(); if (ui.onSave) ui.onSave();
     },
     handleKey(e) {
       if (e.repeat) return null;
@@ -575,6 +575,9 @@ function drawPauseMenu(ctx, ui) {
   });
   ctx.font = '14px sans-serif'; ctx.fillStyle = '#999';
   ctx.fillText('Panah: pilih · Enter: konfirmasi · ESC: tutup', W / 2, startY + items.length * step + 20);
+  const sc = ui.saveCounters || {};
+  ctx.fillStyle = '#7bd66b'; ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('SAVE: $' + ui.money + ', ' + (ui.missionsDone || 0) + ' misi, ' + (sc.carsStolen || 0) + ' mobil', W / 2, startY + items.length * step + 40);
 }
 
 function drawSettingsMenu(ctx, ui) {

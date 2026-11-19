@@ -33,6 +33,31 @@ const police = createPolice(world);
 const peds = createPeds(world, player.x, player.y, 120);
 const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
 let crashCooldown = 0;
+
+// Penyimpanan counter SAVE (money, missionsDone, carsStolen) — key suncity.save.
+const SAVE_COUNT_KEY = 'suncity.save';
+function loadSaveCounters() {
+  try {
+    const raw = localStorage.getItem(SAVE_COUNT_KEY);
+    if (!raw) return { money: 0, missionsDone: 0, carsStolen: 0 };
+    const data = JSON.parse(raw);
+    return {
+      money: Number.isFinite(data.money) ? data.money : 0,
+      missionsDone: Number.isFinite(data.missionsDone) ? data.missionsDone : 0,
+      carsStolen: Number.isFinite(data.carsStolen) ? data.carsStolen : 0,
+    };
+  } catch (e) { return { money: 0, missionsDone: 0, carsStolen: 0 }; }
+}
+const saveCounters = loadSaveCounters();
+function persistSaveCounters() {
+  try {
+    localStorage.setItem(SAVE_COUNT_KEY, JSON.stringify({
+      money: ui.money,
+      missionsDone: ui.missionsDone,
+      carsStolen: saveCounters.carsStolen,
+    }));
+  } catch (e) { /* storage tidak tersedia */ }
+}
 const gfx = initRenderer(canvas, document.getElementById('hud'), world);
 const keys = new Set();
 const ui = createUI(document.getElementById('hud'));
@@ -63,6 +88,8 @@ function applySettings(s) {
 }
 applySettings(ui.settings);
 ui.onSettings = applySettings;
+ui.onSave = persistSaveCounters;
+ui.saveCounters = saveCounters;
 
 // Mode foto: orbit kamera mengelilingi pemain.
 const photo = { yaw: -Math.PI / 2, pitch: 0.35, dist: 90, hintT: 0 };
@@ -101,14 +128,14 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointerup', (e) => { if (!touchTarget(e)) combat.mouseDown = false; });
 addEventListener('pointermove', (e) => { if (!touchTarget(e)) combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()); });
-addEventListener('beforeunload', () => ui.save());
+addEventListener('beforeunload', () => { ui.save(); persistSaveCounters(); });
 
 function enterExit() {
   if (extras.garage.open) return;
   if (interiors.tryInteract()) return;
   const wasOnFoot = !player.car;
   toggleVehicle(world, player);
-  if (wasOnFoot && player.car) addHeat(world, 60, 'carjack');
+  if (wasOnFoot && player.car) { addHeat(world, 60, 'carjack'); saveCounters.carsStolen++; }
 }
 function pressKey(e) {
   const action = ui.handleKey(e);
@@ -288,3 +315,4 @@ if (new URLSearchParams(location.search).has('shot')) {
 }
 requestAnimationFrame(frame);
 window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
+setInterval(persistSaveCounters, 20000);
