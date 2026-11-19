@@ -1,84 +1,55 @@
-# SUNNY CITY — open-world crime (make.fun bounty entry)
+# SUNNY CITY
+
+A 3D open-world crime game that runs offline in Chrome, built by an AI agent for the make.fun gta6-01 bounty.
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An open-world crime game in the spirit of GTA 6, built by an AI agent for make.fun's
-["Make GTA 6" bounty](https://make.fun/bounty/gta6-01) ($1,666 in USDC, 100 paid places).
+## What you can do
 
-## What it is
-
-A 3D top-down open-world crime game that runs offline in desktop Chrome from static files:
-a procedural city (324 buildings across three districts, facade textures, rooftop props),
-traffic and pedestrians, carjacking and driving, 5-star wanted level with police pursuit,
-helicopter and roadblocks, shooting with tracer/muzzle effects, three mission types with
-world markers and a compass, HUD with minimap, money and health, start menu, pause and save.
-
-Everything is original: own city layout, names, characters and art, no Rockstar assets.
-
-## Fitur V3
-
-Versi V3 menambahkan siklus siang dan malam yang berjalan terus selama permainan, delapan misi
-bercerita yang saling berantai, empat senjata yang dipilih lewat roda senjata, sebuah garasi untuk
-memperbaiki dan mengecat ulang mobil, tiga stasiun radio di dalam kendaraan, hujan yang datang
-secara berkala dengan jalan basah dan petir, serta dua belas paket tersembunyi yang menambah uang.
-
-## Kontrol V3
-
-Gerak memakai WASD, Shift untuk berlari, dan Enter untuk memulai dari menu. Tombol 1 sampai 4
-memilih senjata, Q membuka roda senjata, R mengganti stasiun radio saat mengemudi, P serta Esc
-menjeda permainan dan menyimpan progres.
-
-## Run it
-
-```bash
-# any static server works; the game is plain files under game/
-python3 -m http.server 8080 --directory game
-# open http://localhost:8080
-```
-
-The entry program `main.ts` (Node 22+, no dependencies) copies `game/` and `screenshots/`
-to `/output` and writes `dossier.json` with the kit's `buildDossier`:
-
-```bash
-MAKEFUN_OUTPUT_DIR=out node main.ts
-```
+- Explore a procedural city with 3 districts, and walk into interiors: a diner, a gun shop and a bank with a vault.
+- Play 8 chained story missions: courier, car chase, execution, escort, warehouse theft, race, police siege and a finale.
+- Switch between 4 weapons (pistol, SMG, shotgun, rifle) with a weapon wheel.
+- Raise a 5-star wanted level and face police cars, a helicopter and roadblocks.
+- Steal cars, drive through traffic, and repair or repaint them at the garage.
+- Listen to 3 radio stations while driving.
+- Watch the day-night cycle turn, with periodic rain and lightning.
+- Find 12 hidden packages, follow the minimap and compass, and keep your progress with save.
 
 ## Controls
 
 | Key | Action |
 |---|---|
-| WASD / arrows | walk, drive |
-| Shift | sprint |
-| E | enter / exit vehicle |
-| F or left click | shoot (mouse aims) |
-| 1 / 2 | pistol / SMG |
-| ESC | pause (auto-saves money and progress) |
-| Enter | start from the menu |
+| WASD / arrows | Move, drive |
+| Shift | Sprint (nitro in a car with nitro) |
+| Mouse / F | Aim with the mouse; shoot with left button or F |
+| 1-4 | Select weapon |
+| Q (hold) | Weapon wheel |
+| E | Enter or exit a car, use doors and the garage |
+| R | Next radio station (while driving) |
+| Esc | Pause and save |
+| Enter | Start from the menu |
 
-Touch controls appear automatically on phones (joystick + E / F / sprint / pause).
+## How it runs
 
-## How it was built
-
-Built by a Qwen Code 0.28 agent (recorded harness) on 18-19 Nov 2026.
-three.js is vendored, with no build step and no network requests.
-The final visual pass chased edge density and contrast for the contact sheet.
-
-## Structure
-
+```bash
+python3 -m http.server 8080 --directory game
+# then open http://localhost:8080
 ```
-game/index.html      canvas + HUD canvas
-game/src/main.js     bootstrap, loop, wiring
-game/src/world.js    city grid, districts, lane points
-game/src/render3d.js three.js renderer: buildings, props, effects, HUD
-game/src/player.js   walking and collision
-game/src/vehicle.js  cars, driving physics, traffic
-game/src/police.js   wanted level, dispatch, pursuit, helicopter
-game/src/peds.js     pedestrians and panic behaviour
-game/src/missions.js three mission types, markers, rewards
-game/src/combat.js   aiming, hitscan, effects, health, WASTED/BUSTED
-game/src/ui.js       menu, pause, money HUD, save/load
-game/src/audio.js    WebAudio sirens, shots, crashes, menu clicks
-vendor/              three.js (vendored, minified)
-```
+
+No build step, no network. WebGL comes from the vendored three.js in `game/vendor/`.
+
+## Under the hood
+
+- three.js renders the city, vehicles, interiors and effects.
+- Geometry is merged and textures are drawn on canvases, which keeps draw calls low.
+- Vehicles use a simple arcade physics model.
+- All art, names, characters and audio are original and generated in code.
+
+## Repository
+
+- `main.ts` - entry packer: copies `game/` and `screenshots/` to the output and builds the dossier
+- `game/` - `index.html` and `src/*.js` (world, render3d, vehicle, police, missions, combat, interiors, extras, ui, audio)
+- `screenshots/` - the four contact-sheet screenshots
+- `shots.json` - screenshot scene list (`?shot=...` URLs)
