@@ -1028,6 +1028,7 @@ export function buildWorldMeshes(gfx, world) {
   glassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   glassMesh.frustumCulled = false;
   glassMesh.castShadow = true;
+  glassMesh.visible = false;
   gfx.scene.add(glassMesh);
   gfx.glassMesh = glassMesh;
 
@@ -1614,6 +1615,9 @@ function buildCarGeometry() {
   const paint = mergeColored([
     { geo: new THREE.BoxGeometry(56, 11, 22).translate(0, -3.5, 0), color: '#ffffff' },
     { geo: new THREE.BoxGeometry(28, 7, 18).translate(-4, 5.5, 0), color: '#ffffff' },
+    { geo: new THREE.BoxGeometry(24, 4.4, 18.8).translate(-4, 6, 0), color: '#1c2a3a' },
+    { geo: new THREE.BoxGeometry(0.8, 4, 17).translate(10.2, 5.8, 0), color: '#a9d6f2' },
+    { geo: new THREE.BoxGeometry(0.8, 4, 17).translate(-18.4, 5.8, 0), color: '#a9d6f2' },
     { geo: new THREE.BoxGeometry(56.4, 1.6, 22.4).translate(0, -1.5, 0), color: '#2a2d33' },
     { geo: new THREE.BoxGeometry(30, 0.5, 4).translate(-4, 9.3, 0), color: '#15171a' },
     { geo: new THREE.BoxGeometry(50, 1.8, 22.6).translate(0, -2.2, 0), color: '#e23b2e' },
@@ -2488,8 +2492,6 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   if (gfx.hemi.intensity < 0.40) gfx.hemi.intensity = 0.40;
   if (gfx.ambient.intensity < 0.14) gfx.ambient.intensity = 0.14;
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
-  cullProps(gfx);
-  updateGodRays(gfx);
   if (gfx.bloom && gfx.bloomEnabled) renderBloom(gfx); else gfx.renderer.render(gfx.scene, gfx.camera);
   if (gfx.interiorAfter) gfx.interiorAfter();
   if (combat) combat.clearShake(gfx.camera);
