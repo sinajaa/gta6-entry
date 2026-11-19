@@ -47,9 +47,10 @@ function setHour(gfx, hour) {
   gfx.hour = hour; gfx.frozenHour = true; gfx.dayKey = null; gfx.skyHour = -1;
 }
 
-function lookFrom(cam, [x, h, y], [tx, th, ty], fov) {
+function lookFrom(cam, [x, h, y], [tx, th, ty], fov, roll = 0) {
   cam.position.set(x - HX, h, y - HY);
   cam.lookAt(tx - HX, th, ty - HY);
+  if (roll) cam.rotateZ(roll);
   if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
 }
 
@@ -72,7 +73,7 @@ function placePeds(c, spots) {
 
 const SHOTS = {
   street: {
-    light: { hemi: 1.3, ambient: 0.5, sun: 4.2, exposure: 1.9 },
+    light: { hemi: 1.3, ambient: 0.5, sun: 3.6, exposure: 1.7 },
     hour: 17.5,
     setup(c) {
       const { player, world, police } = c;
@@ -95,12 +96,12 @@ const SHOTS = {
       placePeds(c, spots);
     },
     camera(c, cam) {
-      lookFrom(cam, [1372, 26, 1810], [1322, 62, 1380], 72);
+      lookFrom(cam, [1352, 22, 1780], [1322, 22, 1380], 72);
     },
   },
 
   chase: {
-    light: { hemi: 1.0, ambient: 0.45, sun: 1.2, exposure: 1.7 },
+    light: { hemi: 1.0, ambient: 0.45, sun: 1.2, exposure: 1.15 },
     hour: 21,
     setup(c) {
       const car = freeCars(c)[0];
@@ -120,12 +121,12 @@ const SHOTS = {
     camera(c, cam) {
       const car = c.player.car;
       const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
-      lookFrom(cam, [car.x - fx * 96 - fy * 14, 40, car.y - fy * 96 + fx * 14], [car.x + fx * 120, 18, car.y + fy * 120], 74);
+      lookFrom(cam, [car.x - fx * 66 - fy * 12, 28, car.y - fy * 66 + fx * 12], [car.x + fx * 120, 12, car.y + fy * 120], 74);
     },
   },
 
   firefight: {
-    light: { hemi: 1.3, ambient: 0.5, sun: 4.2, exposure: 1.9 },
+    light: { hemi: 1.3, ambient: 0.5, sun: 3.6, exposure: 1.7 },
     hour: 17.2,
     setup(c) {
       const { player, combat, world } = c;
@@ -160,12 +161,12 @@ const SHOTS = {
       combat.bust = 0;
     },
     camera(c, cam) {
-      lookFrom(cam, [1046, 34, 1352], [1230, 14, 1316], 66);
+      lookFrom(cam, [1090, 26, 1346], [1240, 10, 1316], 70);
     },
   },
 
   driving: {
-    light: { hemi: 1.1, ambient: 0.4, sun: 4.0, exposure: 1.3 },
+    light: { hemi: 1.1, ambient: 0.4, sun: 3.6, exposure: 1.3 },
     hour: 17.7,
     setup(c) {
       const car = freeCars(c)[0];
@@ -181,7 +182,7 @@ const SHOTS = {
     },
     camera(c, cam) {
       const car = c.player.car;
-      lookFrom(cam, [car.x + 62, 12, car.y + 120], [car.x - 6, 42, car.y - 150], 70);
+      lookFrom(cam, [car.x + 34, 8, car.y + 84], [car.x - 6, 16, car.y - 150], 74, 0.12);
     },
   },
 };

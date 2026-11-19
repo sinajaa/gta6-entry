@@ -24,7 +24,7 @@ const STAR_COLOR = '#f5c518';
 
 function makeSkyTexture() {
   const canvas = document.createElement('canvas');
-  canvas.width = 4; canvas.height = 256;
+  canvas.width = 512; canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 0, 256);
   g.addColorStop(0, '#2f5f9e');
@@ -32,7 +32,7 @@ function makeSkyTexture() {
   g.addColorStop(0.27, '#f0b88a');
   g.addColorStop(1, '#f0b88a');
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 4, 256);
+  ctx.fillRect(0, 0, 512, 256);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -58,15 +58,87 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 const MOON_COLOR = C('#9fb4ff');
 const SKY_REDRAW_STEP = 0.05;
 
+function skyRng(seed) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function drawSky(gfx, top, mid, hor) {
   const ctx = gfx.skyCtx;
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, `#${top.getHexString()}`);
-  g.addColorStop(0.18, `#${mid.getHexString()}`);
-  g.addColorStop(0.27, `#${hor.getHexString()}`);
-  g.addColorStop(1, `#${hor.getHexString()}`);
+  const W = 512, H = 256;
+  const night = gfx.night || 0;
+  const hex = (c) => `#${c.getHexString()}`;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, hex(top));
+  g.addColorStop(0.1, hex(top.clone().lerp(mid, 0.45)));
+  g.addColorStop(0.2, hex(mid));
+  g.addColorStop(0.3, hex(mid.clone().lerp(hor, 0.7)));
+  g.addColorStop(0.38, hex(hor));
+  g.addColorStop(1, hex(hor));
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 4, 256);
+  ctx.fillRect(0, 0, W, H);
+  const rnd = skyRng(7);
+  if (night > 0.3) {
+    ctx.globalAlpha = Math.min(1, (night - 0.3) / 0.5);
+    for (let i = 0; i < 140; i++) {
+      const y = rnd() * H * 0.3, b = 0.4 + rnd() * 0.6;
+      ctx.fillStyle = `rgba(255,255,${220 + Math.floor(rnd() * 35)},${b})`;
+      ctx.fillRect(Math.floor(rnd() * W), Math.floor(y), rnd() > 0.85 ? 2 : 1, 1);
+    }
+    const mg = ctx.createRadialGradient(390, 38, 2, 390, 38, 34);
+    mg.addColorStop(0, 'rgba(240,244,255,0.5)');
+    mg.addColorStop(1, 'rgba(240,244,255,0)');
+    ctx.fillStyle = mg;
+    ctx.fillRect(350, 0, 80, 80);
+    ctx.fillStyle = '#e8eeff';
+    ctx.beginPath(); ctx.arc(390, 38, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = hex(top);
+    ctx.beginPath(); ctx.arc(394, 35, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (night < 0.7) {
+    const warm = hor.r > hor.b + 0.15;
+    ctx.globalAlpha = 0.5 * (1 - night / 0.7);
+    for (let i = 0; i < 14; i++) {
+      const cx = rnd() * W, cy = 18 + rnd() * 52, w = 40 + rnd() * 70;
+      for (let k = 0; k < 6; k++) {
+        const px = cx + (rnd() - 0.5) * w, py = cy + (rnd() - 0.5) * 7;
+        const cg = ctx.createRadialGradient(px, py, 1, px, py, 14 + rnd() * 12);
+        cg.addColorStop(0, warm ? 'rgba(255,214,184,0.55)' : 'rgba(255,255,255,0.5)');
+        cg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = cg;
+        ctx.fillRect(px - 30, py - 20, 60, 40);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  const hg = ctx.createLinearGradient(0, H * 0.2, 0, H * 0.5);
+  hg.addColorStop(0, 'rgba(255,255,255,0)');
+  hg.addColorStop(0.7, `rgba(${Math.round(hor.r * 255)},${Math.round(hor.g * 255)},${Math.round(hor.b * 255)},0.7)`);
+  hg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(0, H * 0.2, W, H * 0.3);
+  const sil = hor.clone().multiplyScalar(0.55 + 0.25 * (1 - night)).lerp(mid, 0.25);
+  const base = H * 0.4;
+  for (let layer = 0; layer < 2; layer++) {
+    ctx.fillStyle = hex(layer ? sil : sil.clone().lerp(hor, 0.4));
+    let x = 0;
+    while (x < W) {
+      const w = 8 + rnd() * 18, h = (layer ? 14 : 22) + rnd() * (layer ? 30 : 40);
+      ctx.fillRect(x, base - h + layer * 6, w, h + 90);
+      if (rnd() > 0.8) ctx.fillRect(x + w / 2 - 1, base - h - 8 + layer * 6, 2, 8);
+      x += w + rnd() * 3;
+    }
+  }
+  if (night > 0.3) {
+    ctx.fillStyle = 'rgba(255,224,150,0.7)';
+    for (let i = 0; i < 160; i++) ctx.fillRect(Math.floor(rnd() * W), base - 4 + Math.floor(rnd() * 30), 1, 1);
+  }
   gfx.scene.background.needsUpdate = true;
 }
 
