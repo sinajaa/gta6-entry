@@ -39,12 +39,30 @@ const ui = createUI(document.getElementById('hud'));
 ui.rep = createStanding(ui);
 const audio = createAudio();
 const missions = createMissions(world, ui, audio);
+ui.link(world, missions, player);
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
 gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
+
+// Terapkan pengaturan (kualitas render, bayangan, sensitivitas mouse, volume) ke sistem.
+function applySettings(s) {
+  const q = s.quality === 'low' ? 1 : s.quality === 'medium' ? 1.5 : 2;
+  const ratio = Math.min(window.devicePixelRatio || 1, q);
+  gfx.renderer.setPixelRatio(ratio);
+  gfx.renderer.shadowMap.enabled = !!s.shadows && !gfx.software;
+  gfx.renderer.shadowMap.needsUpdate = true;
+  combat.sens = s.sensitivity * 2;
+  audio.setVolume(s.volume * 0.7);
+}
+applySettings(ui.settings);
+ui.onSettings = applySettings;
+
+// Mode foto: orbit kamera mengelilingi pemain.
+const photo = { yaw: -Math.PI / 2, pitch: 0.35, dist: 90, hintT: 0 };
+
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
 
@@ -90,6 +108,8 @@ function pressKey(e) {
   if (action === 'start') startGame();
   if (action === 'pause') { keys.clear(); touch.reset && touch.reset(); combat.mouseDown = false; audio.click(); }
   if (action === 'resume') audio.click();
+  if (action === 'quit') { keys.clear(); audio.click(); }
+  if (action === 'photo-shot') saveScreenshot();
   return action;
 }
 
@@ -117,11 +137,36 @@ function setRadioKey() {
   const on = !!player.car && ui.state === 'PLAYING';
   audio.setRadio(on);
 }
+
+function saveScreenshot() {
+  try {
+    const a = document.createElement('a');
+    a.download = `sunnycity-${Date.now()}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    ui.toast('SCREENSHOT DISIMPAN');
+  } catch (err) { console.warn('screenshot gagal:', err); }
+}
+
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (ui.state === 'PLAYING' && extras.handleKey(k, e.repeat)) { e.preventDefault(); return; }
   if (k === 'r' && !e.repeat && ui.state === 'PLAYING' && player.car) {
     ui.station = audio.nextStation(); ui.stationT = 2.5; setRadioKey();
+  }
+  // Buka/tutup peta dan mode foto, log misi.
+  if (ui.state === 'PLAYING') {
+    if (k === 'm' && !e.repeat) { ui.openMap(); e.preventDefault(); return; }
+    if (k === 'p' && !e.repeat) { ui.openPhoto(); keys.clear(); combat.mouseDown = false; e.preventDefault(); return; }
+    if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
+  }
+  // Navigasi mode foto (orbit + simpan).
+  if (ui.state === 'PHOTO') {
+    if (k === 'arrowleft') photo.yaw += 0.08;
+    else if (k === 'arrowright') photo.yaw -= 0.08;
+    else if (k === 'arrowup') photo.pitch = Math.min(0.9, photo.pitch + 0.06);
+    else if (k === 'arrowdown') photo.pitch = Math.max(0.02, photo.pitch - 0.06);
+    if (k.startsWith('arrow')) { e.preventDefault(); }
   }
   pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
@@ -147,6 +192,22 @@ function frame(now) {
     updatePeds(world, player, peds, rawDt);
     updateMenuCamera(menuCam, gfx.camera, rawDt);
     renderFrame(gfx, world, player, fps, police, peds, undefined, combat);
+    ui.update(0);
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (ui.state === 'PHOTO') {
+    const focus = player.car || player;
+    const cy = focus.x - world.width / 2, cz = focus.y - world.height / 2;
+    const dist = photo.dist, yaw = photo.yaw, pitch = photo.pitch;
+    const camX = cy + Math.cos(yaw) * Math.cos(pitch) * dist;
+    const camZ = cz + Math.sin(yaw) * Math.cos(pitch) * dist;
+    const camY = 12 + Math.sin(pitch) * dist;
+    gfx.camera.position.set(camX, camY, camZ);
+    gfx.camera.lookAt(cy, 12, cz);
+    if (gfx.camera.userData.ghost) gfx.camera.userData.ghost.length = 0;
+    renderFrame(gfx, world, player, fps, police, peds, missions, combat);
+    gfx.hud.clearRect(0, 0, 960, 540);
     ui.update(0);
     requestAnimationFrame(frame);
     return;

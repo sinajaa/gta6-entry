@@ -74,6 +74,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
 
   const c = {
     mouse: { x: 480, y: 270 },
+    sens: 1,
     mouseDown: false,
     aim: { x: player.x + 100, y: player.y },
     weapon: 'pistol',
@@ -100,8 +101,12 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions })
     recoil: 0, kick: 0, _kickApplied: 0,
 
     setMouse(clientX, clientY, rect) {
-      c.mouse.x = Math.max(0, Math.min(960, (clientX - rect.left) / rect.width * 960));
-      c.mouse.y = Math.max(0, Math.min(540, (clientY - rect.top) / rect.height * 540));
+      const normX = (clientX - rect.left) / rect.width, normY = (clientY - rect.top) / rect.height;
+      const cx = 0.5, cy = 0.5;
+      const sens = c.sens != null ? c.sens : 1;
+      const px = cx + (normX - cx) * sens, py = cy + (normY - cy) * sens;
+      c.mouse.x = Math.max(0, Math.min(960, px * 960));
+      c.mouse.y = Math.max(0, Math.min(540, py * 540));
     },
 
     applyShake(camera) {

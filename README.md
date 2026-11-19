@@ -32,8 +32,17 @@ A 3D open-world crime game that runs offline in Chrome, built by an AI agent for
 | Q (hold) | Weapon wheel |
 | E | Enter or exit a car, use doors and the garage |
 | R | Next radio station (while driving) |
-| Esc | Pause and save |
-| Enter | Start from the menu |
+| M | Full-screen map (districts, roads, mission markers, player arrow) |
+| Tab | Mission log (the eight missions and their state) |
+| P | Photo mode (orbit camera, save a screenshot) |
+| Esc | Pause menu (Resume, Settings, Save, Quit) |
+| Enter | Start from the menu / save a screenshot in photo mode |
+
+## Photo mode
+
+Press **P** to enter photo mode: the HUD is hidden and the camera orbits your character. Use the **arrow keys** to orbit and change height, and **Enter** to save a screenshot as a PNG. Press **P** or **Esc** to return to the game.
+
+The pause menu's **Settings** screen lets you change render quality, shadows, mouse sensitivity, and master volume; the choices are remembered between sessions.
 
 ## How it runs
 

@@ -219,5 +219,9 @@ export function createAudio() {
       try { if (master) master.gain.value = muted ? 0 : 0.35; } catch (e) { /* abaikan */ }
       return muted;
     },
+    setVolume: safe((vol) => {
+      if (!master) return;
+      master.gain.value = vol;
+    }),
   };
 }
