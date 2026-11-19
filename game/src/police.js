@@ -15,8 +15,36 @@ const HELI_SPEED = 260, HELI_OFFSET = 150, BLOCK_MIN = 400, BLOCK_MAX = 700;
 const PIT_RANGE = 60, PIT_ANGLE = 0.7, PIT_SPIN = 0.9, PIT_COOLDOWN = 3;
 const SPIKE_AHEAD_MIN = 170, SPIKE_AHEAD_MAX = 330, SPIKE_MAX = 6, SPIKE_LIFE = 14, SPIKE_CLEAR = 48;
 
+const FOOT_WALK = 2, FOOT_RUN = 95, FOOT_ARRIVE = 150;
+const LOOP_MIN = 3 * ROAD_PERIOD + TILE, LOOP_MAX = 4 * ROAD_PERIOD + TILE;
+const LOOP = [[LOOP_MIN, LOOP_MIN], [LOOP_MAX, LOOP_MIN], [LOOP_MAX, LOOP_MAX], [LOOP_MIN, LOOP_MAX]];
+
+function createOfficers() {
+  return [0, 2].map((corner) => ({ x: LOOP[corner][0], y: LOOP[corner][1], target: (corner + 1) % 4, angle: 0, running: false }));
+}
+
+function updateOfficers(state, world, focus, dt) {
+  const carArrived = state.cars.some((cop) => Math.hypot(cop.x - focus.x, cop.y - focus.y) < FOOT_ARRIVE);
+  const chasing = state.stars > 0 && !carArrived;
+  for (const o of state.officers) {
+    o.running = chasing;
+    let tx, ty;
+    if (chasing) { tx = focus.x; ty = focus.y; } else { [tx, ty] = LOOP[o.target]; }
+    const dx = tx - o.x, dy = ty - o.y, dist = Math.hypot(dx, dy);
+    const step = (chasing ? FOOT_RUN : FOOT_WALK) * dt;
+    if (dist > 0.001) {
+      o.angle = Math.atan2(dy, dx);
+      if (chasing && dist < 14) continue;
+      const move = Math.min(step, dist);
+      o.x += dx / dist * move;
+      o.y += dy / dist * move;
+    }
+    if (!chasing && dist <= step) o.target = (o.target + 1) % 4;
+  }
+}
+
 export function createPolice(world) {
-  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0, heli: null, blocks: [], spikes: [], pitCooldown: 0 };
+  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0, heli: null, blocks: [], spikes: [], pitCooldown: 0, officers: createOfficers() };
   world.police = state;
   return state;
 }
@@ -400,6 +428,7 @@ export function updatePolice(state, world, player, dt) {
       patrol(cop, world, dt);
     }
   }
+  updateOfficers(state, world, focus, dt);
   updateSpikes(state, world, player, dt);
   updateHeli(state, world, focus, facing, dt);
   updateRoadblock(state, world, focus, facing);

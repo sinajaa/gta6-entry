@@ -37,6 +37,8 @@ At wanted levels the chasing cruisers split into roles each frame (`assignRoles`
 
 Location: `police.js` — `assignRoles`, `blockAhead`, `pitManeuver`, `updateSpikes`; deflation effect in `vehicle.js`.
 
+- **Foot patrols** — two officers (`state.officers`, data only, not yet rendered) walk the downtown block loop at ~2 u/s, run at the player while wanted until a patrol car is within 150 units, then resume the loop (`updateOfficers`).
+
 ### Coordination flow
 
 `updatePolice` (called from `main.js` each frame) assigns roles before the cop loop, then routes each cop to `pitManeuver`, `blockAhead` or the existing `chase` logic; `updateSpikes`, the helicopter and roadblock continue to run alongside. No controls or mission scripts were changed.
