@@ -4,6 +4,8 @@ import { createPlayer, updatePlayer } from './player.js';
 import { updateCamera3D } from './camera.js';
 import { initRenderer, renderFrame } from './render3d.js';
 import { createPolice, addHeat, updateWanted, updatePolice } from './police.js';
+import { createUI } from './ui.js';
+import { createAudio } from './audio.js';
 import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './vehicle.js';
 
 const canvas = document.getElementById('game');
@@ -11,20 +13,35 @@ const world = createWorld();
 const player = createPlayer(42 * 32 + 16, 42 * 32 + 16);
 player.car = null;
 createCars(world, player.x, player.y);
-const startCar = world.cars[0];
-const START_OFFSET = 55;
-const [startDx, startDy] = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-  .find(([dx, dy]) => tileAt(world, startCar.x + dx * START_OFFSET, startCar.y + dy * START_OFFSET) !== T.BUILDING) || [0, 0];
-player.x = startCar.x + startDx * START_OFFSET;
-player.y = startCar.y + startDy * START_OFFSET;
+const startCar = world.cars.find((c) => c.driver === null);
+const SPAWN_SIDE = 30;
+const spawnSpot = [[SPAWN_SIDE, 0], [-SPAWN_SIDE, 0], [0, SPAWN_SIDE], [0, -SPAWN_SIDE]]
+  .map(([dx, dy]) => [startCar.x + dx, startCar.y + dy])
+  .find(([x, y]) => tileAt(world, x, y) !== T.BUILDING && Math.hypot(x - startCar.x, y - startCar.y) < 60);
+if (!spawnSpot) throw new Error('spawn: tidak ada sisi mobil yang bebas');
+[player.x, player.y] = spawnSpot;
 const police = createPolice(world);
 const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
 let crashCooldown = 0;
 const gfx = initRenderer(canvas, document.getElementById('hud'), world);
 const keys = new Set();
+const ui = createUI(document.getElementById('hud'));
+const audio = createAudio();
+const SIREN_RANGE = 600;
+updateCamera3D(gfx.camera, player, 'walk', 1);
+renderFrame(gfx, world, player, 0, police);
+
+function startGame() { audio.start(); audio.click(); }
+addEventListener('pointerdown', () => { if (ui.click() === 'start') startGame(); });
+addEventListener('beforeunload', () => ui.save());
 
 addEventListener('keydown', (e) => {
+  const action = ui.handleKey(e);
+  if (action === 'start') startGame();
+  if (action === 'pause') { keys.clear(); audio.click(); }
+  if (action === 'resume') audio.click();
   const k = e.key.toLowerCase();
+  if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
   if (k === 'e' && !e.repeat) {
     const wasOnFoot = !player.car;
     toggleVehicle(world, player);
@@ -42,6 +59,8 @@ function frame(now) {
   last = now;
   frames++; fpsTimer += dt;
   if (fpsTimer >= 0.5) { fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0; }
+  ui.update(dt);
+  if (ui.state !== 'PLAYING') { requestAnimationFrame(frame); return; }
   const car = player.car;
   crashCooldown = Math.max(0, crashCooldown - dt);
   if (car) {
@@ -49,6 +68,7 @@ function frame(now) {
     updateDrivenCar(car, keys, world, dt);
     if (speedBefore > CRASH_MIN_SPEED && speedBefore - Math.abs(car.speed) > CRASH_SPEED_DROP && crashCooldown === 0) {
       addHeat(world, 25, 'crash');
+      audio.crash((speedBefore - Math.abs(car.speed)) / 200);
       crashCooldown = CRASH_COOLDOWN;
     }
   }
@@ -58,7 +78,14 @@ function frame(now) {
   updatePolice(police, world, player, dt);
   updateCamera3D(gfx.camera, car || player, car ? 'drive' : 'walk', dt);
   renderFrame(gfx, world, player, fps, police);
+  const focus = car || player;
+  let nearest = Infinity;
+  for (const cop of police.cars) nearest = Math.min(nearest, Math.hypot(cop.x - focus.x, cop.y - focus.y));
+  const proximity = Math.max(0, 1 - nearest / SIREN_RANGE);
+  audio.setSiren(police.stars > 0 ? proximity * (0.5 + 0.1 * police.stars) : 0);
+  ui.wanted = police.stars;
+  ui.update(0);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { world, player, police, keys, gfx, cars: world.cars };
+window.__game = { ui, audio, world, player, police, keys, gfx, cars: world.cars };
