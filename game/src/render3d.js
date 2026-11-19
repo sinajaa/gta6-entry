@@ -296,6 +296,12 @@ function updateDayNight(gfx) {
   };
   const n = gfx.night;
   for (const mat of gfx.buildingMats) mat.emissiveIntensity = gfx.windowBase * (1 + 3.6 * n);
+  if (gfx.glassMat) {
+    gfx.glassMat.uniforms.uTop.value.copy(mixed.top);
+    gfx.glassMat.uniforms.uMid.value.copy(mixed.mid);
+    gfx.glassMat.uniforms.uHor.value.copy(mixed.hor);
+    gfx.glassMat.uniforms.uSunDir.value.copy(gfx.skySunDir || SUN_DIR);
+  }
   if (gfx.lampHead) {
     gfx.lampHead.material.color.setScalar(0.3 + 0.7 * n);
     gfx.lampPool.visible = n > 0.02;
@@ -426,6 +432,7 @@ export function initRenderer(canvas, hudCanvas, world) {
     night: 0, windowBase: software ? 0.35 : 0.6,
   });
   if (!software) setupBloom(gfx);
+  gfx.bloomEnabled = !software;
   buildWorldMeshes(gfx, world);
   buildCombatFx(gfx);
   gfx.buildingMats = [...gfx.buildingMeshes.map((m) => m.material), gfx.ghost.mesh.material];
@@ -508,10 +515,31 @@ const compositeFrag = /* glsl */ `
 uniform sampler2D tDiffuse;
 uniform sampler2D tBloom;
 uniform float uStrength;
+uniform vec2 uSun;
+uniform vec3 uSunColor;
+uniform float uGodRay;
 varying vec2 vUv;
 void main() {
   vec3 base = texture2D(tDiffuse, vUv).rgb;
   vec3 bloom = texture2D(tBloom, vUv).rgb;
+  // Sun god rays: march toward the screen-space sun and accumulate bright fog/surface glow, so
+  // light shafts appear through the fog. Cheap radial sampling, no extra passes.
+  if (uGodRay > 0.0) {
+    vec2 delta = uSun - vUv;
+    float dist = length(delta);
+    vec2 dir = delta / max(dist, 1e-4);
+    vec3 rays = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = 1; i <= 20; i++) {
+      float f = float(i) / 20.0;
+      vec2 p = vUv + dir * f * max(dist, 1e-3);
+      float w = 1.0 - f;
+      rays += texture2D(tBloom, p).rgb * w * w;
+      wsum += w * w;
+    }
+    rays /= max(wsum, 1e-4);
+    base += rays * uGodRay * uSunColor * 2.0;
+  }
   gl_FragColor = vec4(base + bloom * uStrength, 1.0);
 }`;
 
@@ -532,7 +560,7 @@ function setupBloom(gfx) {
 
   const brightMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: brightFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, uThreshold: { value: 0.85 } } });
   const blurMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: blurFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2(1, 0) }, uTexel: { value: new THREE.Vector2(1 / (W / 2), 1 / (H / 2)) } } });
-  const compMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: compositeFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, tBloom: { value: null }, uStrength: { value: 0.55 } } });
+  const compMat = new THREE.ShaderMaterial({ vertexShader: bloomVert, fragmentShader: compositeFrag, depthTest: false, depthWrite: false, toneMapped: false, uniforms: { tDiffuse: { value: null }, tBloom: { value: null }, uStrength: { value: 0.55 }, uSun: { value: new THREE.Vector2(0.5, 0.7) }, uSunColor: { value: new THREE.Color('#fff1dc') }, uGodRay: { value: 0.0 } } });
   compMat.outputColorSpace = THREE.SRGBColorSpace;
 
   const brightQuad = new THREE.Mesh(quadGeo, brightMat);
@@ -587,6 +615,24 @@ function renderBloom(gfx) {
   b.brightQuad.visible = false; b.blurQuad.visible = false; b.compQuad.visible = true;
   renderer.setRenderTarget(null);
   renderer.render(gfx.ppScene, gfx.ppCamera);
+}
+
+const godSunWorld = new THREE.Vector3();
+
+// Projects the current sun direction to screen space and feeds the god-ray uniforms in the
+// bloom composite. God rays fade out at night (the moon casts no shafts).
+function updateGodRays(gfx) {
+  const b = gfx.bloom;
+  if (!b) return;
+  if (!gfx.bloomEnabled) { b.compMat.uniforms.uGodRay.value = 0; return; }
+  const dir = (gfx.sunDirOverride || gfx.skySunDir || SUN_DIR).clone().normalize();
+  gfx.camera.updateMatrixWorld();
+  gfx.camera.matrixWorldInverse.copy(gfx.camera.matrixWorld).invert();
+  godSunWorld.copy(gfx.camera.position).addScaledVector(dir, 2000);
+  godSunWorld.project(gfx.camera);
+  b.compMat.uniforms.uSun.value.set(godSunWorld.x * 0.5 + 0.5, godSunWorld.y * 0.5 + 0.5);
+  b.compMat.uniforms.uSunColor.value.copy(gfx.sun.color);
+  b.compMat.uniforms.uGodRay.value = Math.max(0, 1 - (gfx.night || 0)) * 0.5;
 }
 
 const TRACER_N = 32, FLASH_N = 8, SPARK_N = 48;
@@ -832,6 +878,21 @@ export function makeGroundTexture(world, renderer, software = false) {
     }
   }
 
+  // Cheap ambient occlusion: darken the ground hugging each building's base so walls read as
+  // sitting on the street instead of floating over flat colour. A couple of nested strips give a
+  // soft falloff; baked once into the ground texture for zero per-frame cost.
+  const AO = 5;
+  for (const b of world.buildings) {
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    ctx.fillRect(b.x - AO, b.y - AO + 2, b.w + AO * 2, AO);
+    ctx.fillRect(b.x - AO, b.y + b.h + 2, b.w + AO * 2, AO);
+    ctx.fillRect(b.x + 2, b.y - AO, AO, b.h + AO * 2);
+    ctx.fillRect(b.x + b.w, b.y - AO, AO, b.h + AO * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillRect(b.x - AO * 2, b.y - AO * 2 + 2, b.w + AO * 4, AO);
+    ctx.fillRect(b.x - AO * 2, b.y + b.h + 2, b.w + AO * 4, AO);
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -952,12 +1013,23 @@ export function buildWorldMeshes(gfx, world) {
   buildRoadMarkings(gfx);
   buildStreetDetail(gfx, world);
 
-  const cars = new THREE.InstancedMesh(buildCarGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), MAX_CARS);
+  const carGeo = buildCarGeometry();
+  const paintMat = gfx.software
+    ? new THREE.MeshLambertMaterial({ vertexColors: true })
+    : new THREE.MeshPhysicalMaterial({ vertexColors: true, clearcoat: 1.0, clearcoatRoughness: 0.35, metalness: 0.7, roughness: 0.4 });
+  const cars = new THREE.InstancedMesh(carGeo.paint, paintMat, MAX_CARS);
   cars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   cars.frustumCulled = false;
   cars.castShadow = cars.receiveShadow = true;
   gfx.scene.add(cars);
   gfx.carMesh = cars;
+
+  const glassMesh = new THREE.InstancedMesh(carGeo.glass, makeGlassMaterial(gfx), MAX_CARS);
+  glassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  glassMesh.frustumCulled = false;
+  glassMesh.castShadow = true;
+  gfx.scene.add(glassMesh);
+  gfx.glassMesh = glassMesh;
 
   const lights = new THREE.InstancedMesh(
     new THREE.BoxGeometry(LIGHT_SIZE.length, LIGHT_SIZE.height, LIGHT_SIZE.width),
@@ -1450,14 +1522,98 @@ function syncOcean(gfx) {
   o.mat.uniforms.uNight.value = gfx.night || 0;
 }
 
+// Window glass is its own material: a cheap sky reflection that samples the current day/night
+// sky gradient along the reflected view ray, with a fresnel boost so glass looks glossy from
+// the side and transparent from the front, plus a tight sun specular.
+const glassVert = /* glsl */ `
+#include <fog_pars_vertex>
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  #ifdef USE_INSTANCING
+    wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+  #endif
+  vWorldPos = wp.xyz;
+  vec3 n = normal;
+  #ifdef USE_INSTANCING
+    n = mat3(instanceMatrix) * n;
+  #endif
+  vNormal = normalize(mat3(modelMatrix) * n);
+  vec4 mvPosition = viewMatrix * wp;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+
+const glassFrag = /* glsl */ `
+#include <fog_pars_fragment>
+uniform vec3 uTop;
+uniform vec3 uMid;
+uniform vec3 uHor;
+uniform vec3 uSunDir;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  vec3 R = reflect(-V, N);
+  float h = clamp(R.y, -1.0, 1.0);
+  float t = pow(clamp(1.0 - h, 0.0, 1.0), 0.62);
+  vec3 sky = mix(uTop, uMid, smoothstep(0.0, 0.32, t));
+  sky = mix(sky, uHor, smoothstep(0.3, 0.62, t));
+  float fresnel = pow(1.0 - abs(dot(N, V)), 3.0);
+  vec3 tint = vec3(0.62, 0.82, 0.95);
+  vec3 col = mix(tint, sky, 0.32 + 0.68 * fresnel);
+  vec3 L = normalize(uSunDir);
+  vec3 Hv = normalize(L + V);
+  float spec = pow(max(dot(N, Hv), 0.0), 220.0);
+  col += vec3(1.0, 0.97, 0.88) * spec * 2.0;
+  gl_FragColor = vec4(col, 1.0);
+  #include <fog_fragment>
+}`;
+
+function makeGlassMaterial(gfx) {
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: glassVert,
+    fragmentShader: glassFrag,
+    fog: true,
+    uniforms: {
+      uTop: { value: new THREE.Color('#2f5f9e') },
+      uMid: { value: new THREE.Color('#7fa6c9') },
+      uHor: { value: new THREE.Color(HORIZON) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    },
+  });
+  gfx.glassMat = mat;
+  return mat;
+}
+
+// Splits a car into two vertex-coloured/colourless geometries: the painted shell plus a separate
+// glass set so windows can get their own sky-reflecting material. `mergeParts` is the colourless
+// twin of `mergeColored` used for the glass.
+function mergeParts(parts) {
+  const pos = [], nor = [];
+  for (const geo of parts) {
+    const g = geo.toNonIndexed();
+    pos.push(...g.attributes.position.array);
+    nor.push(...g.attributes.normal.array);
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  merged.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  return merged;
+}
+
 function buildCarGeometry() {
   const wheel = (x, z) => ({ geo: new THREE.CylinderGeometry(4, 4, 4, 10).rotateX(Math.PI / 2).translate(x, -5, z), color: '#15171a' });
-  return mergeColored([
+  const glassParts = [
+    new THREE.BoxGeometry(24, 4.4, 18.8).translate(-4, 6, 0),
+    new THREE.BoxGeometry(0.8, 4, 17).translate(10.2, 5.8, 0),
+    new THREE.BoxGeometry(0.8, 4, 17).translate(-18.4, 5.8, 0),
+  ];
+  const paint = mergeColored([
     { geo: new THREE.BoxGeometry(56, 11, 22).translate(0, -3.5, 0), color: '#ffffff' },
     { geo: new THREE.BoxGeometry(28, 7, 18).translate(-4, 5.5, 0), color: '#ffffff' },
-    { geo: new THREE.BoxGeometry(24, 4.4, 18.8).translate(-4, 6, 0), color: '#1c2a3a' },
-    { geo: new THREE.BoxGeometry(0.8, 4, 17).translate(10.2, 5.8, 0), color: '#a9d6f2' },
-    { geo: new THREE.BoxGeometry(0.8, 4, 17).translate(-18.4, 5.8, 0), color: '#a9d6f2' },
     { geo: new THREE.BoxGeometry(56.4, 1.6, 22.4).translate(0, -1.5, 0), color: '#2a2d33' },
     { geo: new THREE.BoxGeometry(30, 0.5, 4).translate(-4, 9.3, 0), color: '#15171a' },
     { geo: new THREE.BoxGeometry(50, 1.8, 22.6).translate(0, -2.2, 0), color: '#e23b2e' },
@@ -1473,6 +1629,7 @@ function buildCarGeometry() {
     { geo: new THREE.BoxGeometry(1.5, 3, 5).translate(-28.2, -2, 7), color: '#ff3030' },
     { geo: new THREE.BoxGeometry(1.5, 3, 5).translate(-28.2, -2, -7), color: '#ff3030' },
   ]);
+  return { paint, glass: mergeParts(glassParts) };
 }
 
 const MARKER_MAX = 4, MARKER_RADIUS = 14, MARKER_HEIGHT = 120;
@@ -1797,20 +1954,36 @@ function buildProps(gfx, world) {
   }
   gfx.traffic = { mesh: cylMesh, base: lampBase, poles: poleSpots, key: -1 };
 
-  if (gfx.software) {
+  // Per-frame distance culling: props past the draw radius collapse to a degenerate matrix so the
+  // GPU skips them. We keep their original matrices to restore them when the camera comes back.
+  gfx.props = [
+    buildPropSet(treeMesh, trees.map((t) => ({ x: t.x, z: t.y }))),
+    buildPropSet(boxMesh, boxes.map((b) => ({ x: b.x, z: b.z }))),
+    buildPropSet(cylMesh, cyls.map((c) => ({ x: c.x, z: c.z }))),
+    buildPropSet(signMesh, signs.map((s) => ({ x: s.x, z: s.z }))),
+  ];
+
+  // Contact-AO blobs under cars (and, on the software renderer, under static props too, since it
+  // lacks real shadow maps). Always present so vehicles get a soft ground shadow even with the
+  // bloom pass on; the software path also bakes in the static prop shadows.
+  {
     const blobMesh = new THREE.InstancedMesh(
       new THREE.CircleGeometry(1, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: gfx.software ? 0.35 : 0.22, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
       blobs.length + MAX_CARS + 1,
     );
     blobMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     blobMesh.frustumCulled = false;
     blobMesh.renderOrder = 1;
-    blobs.forEach((b, i) => setBlob(blobMesh, i, b.x, b.y, b.sx, b.sy, b.angle));
-    blobMesh.count = blobs.length;
+    if (gfx.software) {
+      blobs.forEach((b, i) => setBlob(blobMesh, i, b.x, b.y, b.sx, b.sy, b.angle));
+      gfx.blobStatic = blobs.length;
+    } else {
+      gfx.blobStatic = 0;
+    }
+    blobMesh.count = gfx.blobStatic;
     gfx.scene.add(blobMesh);
     gfx.blobMesh = blobMesh;
-    gfx.blobStatic = blobs.length;
   }
 }
 
@@ -1820,6 +1993,43 @@ function setBlob(mesh, i, x, y, sx, sy, angle) {
   blobQuat.setFromAxisAngle(yAxis, -angle).multiply(blobFlat);
   blobMatrix.compose(blobPos.set(x - WORLD_W / 2, 0.08, y - WORLD_H / 2), blobQuat, blobScale.set(sx, sy, 1));
   mesh.setMatrixAt(i, blobMatrix);
+}
+
+// ------------------------------------------------------------ prop culling
+// Distant props are collapsed to a near-zero matrix every frame; near ones keep their original
+// transform. This skips rasterising street furniture the player can't see without re-indexing the
+// instance buffer (which other systems, like the traffic-light colours, depend on).
+const CULL_RADIUS = 1050;
+const cullZero = new THREE.Matrix4().makeScale(1e-5, 1e-5, 1e-5);
+const cullM4 = new THREE.Matrix4();
+function buildPropSet(mesh, pos) {
+  const count = pos.length;
+  const orig = new Float32Array(count * 16);
+  for (let i = 0; i < count; i++) {
+    mesh.getMatrixAt(i, cullM4);
+    cullM4.toArray(orig, i * 16);
+  }
+  return { mesh, pos, count, r2: CULL_RADIUS * CULL_RADIUS, culled: new Uint8Array(count), orig };
+}
+
+function cullProps(gfx) {
+  const sets = gfx.props;
+  if (!sets || !sets.length) return;
+  const cx = gfx.camera.position.x + WORLD_W / 2;
+  const cz = gfx.camera.position.z + WORLD_H / 2;
+  for (const set of sets) {
+    let dirty = false;
+    for (let i = 0; i < set.count; i++) {
+      const dx = set.pos[i].x - cx, dz = set.pos[i].z - cz;
+      const far = (dx * dx + dz * dz > set.r2) ? 1 : 0;
+      if (far === set.culled[i]) continue;
+      set.culled[i] = far;
+      if (far) set.mesh.setMatrixAt(i, cullZero);
+      else set.mesh.setMatrixAt(i, set.orig.subarray(i * 16, i * 16 + 16));
+      dirty = true;
+    }
+    if (dirty) set.mesh.instanceMatrix.needsUpdate = true;
+  }
 }
 
 function lightState(time, axis) {
@@ -2178,10 +2388,15 @@ export function syncActors(gfx, world, player) {
     carScale.set(squash, 1 - dmg * 0.18, 1 + dmg * 0.08);
     carMatrix.compose(carPosition, carQuaternion, carScale);
     gfx.carMesh.setMatrixAt(i, carMatrix);
+    if (gfx.glassMesh) gfx.glassMesh.setMatrixAt(i, carMatrix);
     gfx.carMesh.setColorAt(i, carColor.set(car.color).multiplyScalar(1 - dmg * 0.45));
   });
   gfx.carMesh.count = count;
   gfx.carMesh.instanceMatrix.needsUpdate = true;
+  if (gfx.glassMesh) {
+    gfx.glassMesh.count = count;
+    gfx.glassMesh.instanceMatrix.needsUpdate = true;
+  }
   if (gfx.carMesh.instanceColor) gfx.carMesh.instanceColor.needsUpdate = true;
 
   syncPoliceLights(gfx, world);
@@ -2273,7 +2488,9 @@ export function renderFrame(gfx, world, player, fps, police, peds, missions, com
   if (gfx.hemi.intensity < 0.40) gfx.hemi.intensity = 0.40;
   if (gfx.ambient.intensity < 0.14) gfx.ambient.intensity = 0.14;
   if (gfx.frameNo++ % 2 === 0) gfx.renderer.shadowMap.needsUpdate = true;
-  if (gfx.bloom) renderBloom(gfx); else gfx.renderer.render(gfx.scene, gfx.camera);
+  cullProps(gfx);
+  updateGodRays(gfx);
+  if (gfx.bloom && gfx.bloomEnabled) renderBloom(gfx); else gfx.renderer.render(gfx.scene, gfx.camera);
   if (gfx.interiorAfter) gfx.interiorAfter();
   if (combat) combat.clearShake(gfx.camera);
   drawHud(gfx.hud, world, player, fps, police, missions, gfx.camera, combat);

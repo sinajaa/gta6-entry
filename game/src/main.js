@@ -52,7 +52,11 @@ function applySettings(s) {
   const q = s.quality === 'low' ? 1 : s.quality === 'medium' ? 1.5 : 2;
   const ratio = Math.min(window.devicePixelRatio || 1, q);
   gfx.renderer.setPixelRatio(ratio);
-  gfx.renderer.shadowMap.enabled = !!s.shadows && !gfx.software;
+  // The render-quality tier now gates the costly passes: low drops bloom and shadows entirely,
+  // medium/high run both. The dedicated shadows toggle still overrides the shadow map on top.
+  const fast = s.quality === 'low';
+  gfx.bloomEnabled = !fast && !gfx.software;
+  gfx.renderer.shadowMap.enabled = !!s.shadows && !fast && !gfx.software;
   gfx.renderer.shadowMap.needsUpdate = true;
   combat.sens = s.sensitivity * 2;
   audio.setVolume(s.volume * 0.7);
