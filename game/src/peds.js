@@ -58,6 +58,17 @@ export function createPeds(world, px, py, count = 120) {
 
 function onSidewalk(world, x, y) { return tileAt(world, x, y) === T.SIDEWALK; }
 
+function nearShopFront(world, x, y) {
+  return onSidewalk(world, x, y) && (
+    tileAt(world, x + TILE, y) === T.BUILDING || tileAt(world, x - TILE, y) === T.BUILDING ||
+    tileAt(world, x, y + TILE) === T.BUILDING || tileAt(world, x, y - TILE) === T.BUILDING);
+}
+
+function inPark(world, x, y) {
+  for (const p of world.parks) if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return true;
+  return false;
+}
+
 function turnWalk(world, p) {
   const options = [];
   for (let k = 0; k < 4; k++) {
@@ -158,15 +169,27 @@ export function updatePeds(world, player, peds, dt) {
         p.state = 'WALK'; p.angle = Math.floor(Math.random() * 4) * HALF_PI; p.timer = 1 + Math.random() * 4;
         snapToSidewalk(world, p);
       }
+    } else if (p.state === 'PHONE' || p.state === 'SIT') {
+      // A ped pauses in place to check a phone (near a shop front) or rest on a bench (in a park),
+      // then resumes walking once the timer runs out.
+      p.speed = 0;
+      p.timer -= dt;
+      if (p.timer <= 0) { p.state = 'WALK'; p.speed = WALK_SPEED; p.timer = 1 + Math.random() * 4; }
     } else {
       p.speed = WALK_SPEED;
       p.timer -= dt;
       const step = p.speed * dt;
       if (p.timer <= 0) {
-        p.timer = 2 + Math.random() * 4;
-        const cross = Math.random() < 0.12 ? findCrossing(world, p) : null;
-        if (cross) { p.state = 'CROSS'; p.angle = cross.angle; }
-        else turnWalk(world, p);
+        if (Math.random() < 0.14 && nearShopFront(world, p.x, p.y)) {
+          p.state = 'PHONE'; p.timer = 2 + Math.random() * 3; p.speed = 0;
+        } else if (Math.random() < 0.18 && inPark(world, p.x, p.y)) {
+          p.state = 'SIT'; p.timer = 3 + Math.random() * 4; p.speed = 0;
+        } else {
+          p.timer = 2 + Math.random() * 4;
+          const cross = Math.random() < 0.12 ? findCrossing(world, p) : null;
+          if (cross) { p.state = 'CROSS'; p.angle = cross.angle; }
+          else turnWalk(world, p);
+        }
       }
       if (p.state === 'CROSS') continue;
       const nx = p.x + Math.cos(p.angle) * step, ny = p.y + Math.sin(p.angle) * step;

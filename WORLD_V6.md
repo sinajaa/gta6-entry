@@ -63,6 +63,8 @@ Drifting now slides the car sideways (handbrake or full-lock at speed) to build 
 
 A one-time cinematic flyover sweeps the camera over the city right after the title screen, skippable with any key (`game/src/camera.js`). Six hidden gold tokens are scattered across the three districts, paying cash on touch and reporting a `TOKEN n/6` counter in the HUD (`game/src/extras.js`).
 
+Peds occasionally pause near shop fronts to check a phone (`PHONE`) or sit on a bench in a park (`SIT`), then resume walking (`game/src/peds.js`).
+
 ## Verification
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.
