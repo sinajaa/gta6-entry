@@ -90,7 +90,10 @@ const touchTarget = (e) => !!(e.target && e.target.closest && e.target.closest('
 addEventListener('pointerdown', (e) => {
   if (ui.state === 'PLAYING' && extras.click(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight)) return;
   if (ui.click() === 'start') startGame();
-  else if (e.button === 0 && ui.state === 'PLAYING' && !touchTarget(e)) combat.mouseDown = true;
+  else if (e.button === 0 && ui.state === 'PLAYING') {
+    if (ui.logOpen) { ui.logClick(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight); return; }
+    if (!touchTarget(e)) combat.mouseDown = true;
+  }
 });
 addEventListener('pointerup', (e) => { if (!touchTarget(e)) combat.mouseDown = false; });
 addEventListener('pointermove', (e) => { if (!touchTarget(e)) combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()); });

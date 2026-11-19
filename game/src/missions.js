@@ -39,6 +39,18 @@ export const MISSION_LIST = [
     id: 'finale', title: 'FINALE: BOS KOTA', who: 'Don Vega', reward: 1500, limit: 200,
     intro: 'Ini akhirnya. Temui aku di titik kuning, lalu hancurkan mobil bos.', win: 'Kota ini milikmu, Sunny City.', lose: 'Bos lolos. Coba lagi.',
   },
+
+  // ——— PEKERJAAN SAMPINGAN (side jobs) — start lewat Log Misi, tidak mengubah rantai 8 misi cerita ———
+  {
+    id: 'heist', kind: 'side', title: 'PERAMPOKAN BANK (2 GELOMBANG)', who: 'Nico', reward: 1200, limit: 240,
+    intro: 'Jebol brankas bank (titik kuning), tahan 2 gelombang polisi, lalu kabur pakai mobil!',
+    win: 'Lolos dengan uangnya. Kamu gila!', lose: 'Perampokan gagal...',
+  },
+  {
+    id: 'taxi', kind: 'side', title: 'TARIF TAKSI BERJALAN', who: 'Dewan Taksi', reward: 400, limit: 90,
+    intro: 'Jemput penumpang di titik kuning, antar ke tujuan sebelum waktu habis.',
+    win: 'Penumpang puas. Ongkos dihitung.', lose: 'Penumpang kesal dan turun.',
+  },
 ];
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -86,9 +98,17 @@ export function createMissions(world, ui, audio) {
     markers: [],
     target: null,
     focus: { x: 0, y: 0 },
+    checkpoint: null,
 
     next() {
       m.start(MISSION_LIST[cursor % MISSION_LIST.length].id);
+    },
+
+    // Mulai pekerjaan sampingan (side jobs) dari Log Misi tanpa menggeser rantai cerita.
+    startSide(id) {
+      const def = MISSION_LIST.find((d) => d.id === id);
+      if (!def) return;
+      m.start(id);
     },
 
     start(id) {
@@ -97,6 +117,19 @@ export function createMissions(world, ui, audio) {
       if (idx < 0) throw new Error('misi tidak dikenal: ' + id);
       const def = MISSION_LIST[idx];
       m.active = { id, def, title: def.title, pending: true, t: 0, cars: [], stage: 0 };
+      // Checkpoint respawn: kalau misi yang sama baru gagal dan punya cache objektif, pulihkan posisinya.
+      if (m.checkpoint && m.checkpoint.id === id) {
+        const cp = m.checkpoint;
+        m.active.stage = cp.stage;
+        if (cp.wave != null) m.active.wave = cp.wave;
+        if (cp.waveT != null) m.active.waveT = cp.waveT;
+        if (cp.waveDuration != null) m.active.waveDuration = cp.waveDuration;
+        if (cp.dest) m.active.dest = cp.dest;
+        if (cp.pickup) m.active.pickup = cp.pickup;
+        if (cp.points) m.active.points = cp.points;
+        m.active.cp = cp;
+        delete m.checkpoint;
+      }
       gap = 0;
     },
 
@@ -232,10 +265,69 @@ export function createMissions(world, ui, audio) {
       markers: (a) => a.stage ? [{ x: a.car.x, y: a.car.y, scale: 0.7 }] : [{ x: a.dest.x, y: a.dest.y, scale: 1 }],
       target: (a) => (a.stage ? a.car : a.dest),
     },
+
+    // PERAMPOKAN BANK: ambil brankas, tahan 2 gelombang polisi, kabur pakai mobil ke titik aman.
+    heist: {
+      update(a, f, dt) {
+        if (a.stage === 0) {
+          // Gelombang 0 = menuju & membobol brankas.
+          if (dist(f, a.dest) >= REACH) return;
+          a.stage = 1; a.wave = 1; a.waveT = 0; a.waveDuration = 20; a.pulse = 0;
+          addHeat(world, 150, 'heist');
+          ui.toast('BRANKAS DIJEBOL — GELOMBANG 1');
+          say(a.def.who, 'Alarm menyala! Tahan dua gelombang polisi!');
+        } else if (a.stage === 1) {
+          // Tahan 2 gelombang polisi.
+          a.pulse -= dt;
+          if (a.pulse <= 0) { a.pulse = 1.5; addHeat(world, world.police.stars < 3 ? 100 : 8, 'heist'); }
+          a.waveT += dt;
+          if (a.waveT >= a.waveDuration) {
+            a.wave++;
+            if (a.wave > 2) {
+              // Gelombang selesai → kabur pakai mobil.
+              a.stage = 2;
+              a.dest = spot(world, f, 350, 650);
+              ui.toast('LUPAKAN UANG — KABUR PAKAI MOBIL!');
+              say(a.def.who, 'Lari sekarang, ke titik aman!');
+            } else {
+              a.waveT = 0;
+              ui.toast('GELOMBANG ' + a.wave);
+            }
+          }
+        } else if (dist(f, a.dest) < REACH) {
+          finish();
+        }
+      },
+      text: (a) => {
+        if (a.stage === 0) return `BOBRAK BANK ${Math.round(dist(m.focus, a.dest))}m`;
+        if (a.stage === 1) return `TAHAN POLISI — GELOMBANG ${a.wave}/2 (${Math.max(0, Math.ceil(a.waveDuration - a.waveT))}s)`;
+        return `KABUR ${Math.round(dist(m.focus, a.dest))}m`;
+      },
+      markers: (a) => (a.stage === 2 ? [{ x: a.dest.x, y: a.dest.y, scale: 1 }] : a.stage === 0 ? [{ x: a.dest.x, y: a.dest.y, scale: 1 }] : []),
+      target: (a) => (a.stage === 2 || a.stage === 0 ? a.dest : null),
+    },
+
+    // TARIF TAKSI: jemput penumpang, antar ke tujuan, terima bayaran.
+    taxi: {
+      update(a, f) {
+        if (a.stage === 0) {
+          if (dist(f, a.pickup) >= REACH) return;
+          a.stage = 1; a.dest = spot(world, a.pickup, 350, 700);
+          ui.toast('PENUMPANG NAIK');
+          say(a.def.who, 'Nggih, antar ke alamat ini, cepat!');
+        } else if (dist(f, a.dest) < REACH) {
+          finish();
+        }
+      },
+      text: (a) => `${a.stage ? 'ANTAR PENUMPANG' : 'JEMPUT'} ${Math.round(dist(m.focus, a.stage ? a.dest : a.pickup))}m`,
+      markers: (a) => [{ x: a.stage ? a.dest.x : a.pickup.x, y: a.stage ? a.dest.y : a.pickup.y, scale: 1 }],
+      target: (a) => (a.stage ? a.dest : a.pickup),
+    },
   };
 
   function init(a, f, w) {
     m.focus = f;
+    if (a.cp) { a.cp = null; return; } // checkpoint sudah memulihkan stage & objektif di start()
     if (a.id === 'delivery') a.dest = spot(w, f, 150, 350);
     else if (a.id === 'chase') {
       const p = pick(ptsBetween(w, f, 260, 340));
@@ -269,6 +361,8 @@ export function createMissions(world, ui, audio) {
       for (let i = 0; i < 5; i++) { const p = spot(w, from, 120, 260); a.points.push(p); from = p; }
     } else if (a.id === 'wave') { a.pulse = 0; a.wave = 0; }
     else if (a.id === 'finale') a.dest = spot(w, f, 250, 450);
+    else if (a.id === 'heist') a.dest = spot(w, f, 250, 450);
+    else if (a.id === 'taxi') a.pickup = spot(w, f, 300, 550);
   }
 
   function cleanup() {
@@ -281,14 +375,15 @@ export function createMissions(world, ui, audio) {
 
   function finish() {
     const a = m.active, reward = a.def.reward;
+    const isSide = a.def.kind === 'side';
     ui.addMoney(reward);
     ui.toast(`MISI SELESAI +$${reward}`);
     say(a.def.who, a.def.win);
-    ui.missionsDone++;
-    m.done++;
+    if (!isSide) { ui.missionsDone++; m.done++; }
     if (ui.rep) ui.rep.add(m.focus.x, m.focus.y, 10);
     audio.complete();
-    cursor = (MISSION_LIST.indexOf(a.def) + 1) % MISSION_LIST.length;
+    cursor = isSide ? cursor : (MISSION_LIST.indexOf(a.def) + 1) % MISSION_LIST.length;
+    m.checkpoint = null;
     cleanup();
     ui.save();
     gap = GAP_SECONDS;
@@ -298,6 +393,21 @@ export function createMissions(world, ui, audio) {
     const a = m.active;
     ui.toast('MISI GAGAL');
     say(a.def.who, a.def.lose);
+    // Checkpoint respawn: simpan objektif terakhir supaya ulangan tidak mulai dari nol.
+    if (a.stage > 0) {
+      m.checkpoint = {
+        id: a.id,
+        stage: a.stage,
+        wave: a.wave,
+        waveT: a.waveT,
+        waveDuration: a.waveDuration,
+        dest: a.dest ? { x: a.dest.x, y: a.dest.y } : null,
+        pickup: a.pickup ? { x: a.pickup.x, y: a.pickup.y } : null,
+        points: a.points ? a.points.map((p) => ({ x: p.x, y: p.y })) : null,
+      };
+    } else {
+      m.checkpoint = null;
+    }
     cleanup();
     gap = GAP_SECONDS;
   }

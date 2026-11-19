@@ -105,7 +105,7 @@ export function createUI(hud) {
     hasSave: !!saved,
     settings: loadSettings(),
     navMenu: false, navIdx: 0, navScreen: 'main',
-    logOpen: false,
+    logOpen: false, logIdx: 0,
     mapCanvas: null, world: null, missions: null, player: null,
     photoHint: 0,
     toasts: [],
@@ -130,12 +130,45 @@ export function createUI(hud) {
       if (ui.state !== 'PLAYING') return;
       ui.logOpen = !ui.logOpen;
     },
+    // Navigasi & mulai pekerjaan sampingan dari Log Misi.
+    logSelect(delta) {
+      if (!ui.logOpen || !ui.missions || !ui.missions.list) return;
+      const n = ui.missions.list.length;
+      ui.logIdx = ((ui.logIdx + delta) % n + n) % n;
+    },
+    logStartSelected() {
+      if (!ui.logOpen || !ui.missions || !ui.missions.list) return;
+      const def = ui.missions.list[ui.logIdx];
+      if (!def) return;
+      if (def.kind === 'side') {
+        ui.missions.startSide(def.id);
+        ui.logOpen = false;
+        ui.toast(def.title + ' — DIMULAI');
+      }
+    },
+    logClick(x, y) {
+      if (!ui.logOpen || !ui.missions || !ui.missions.list) return;
+      // Area baris log: panel 640..940, baris mulai y=157 dengan tinggi 42.
+      if (x < 656 || x > 924) return;
+      const first = 157, step = 42, n = ui.missions.list.length;
+      const idx = Math.floor((y - first) / step);
+      if (idx < 0 || idx >= n) return;
+      ui.logIdx = idx;
+      ui.logStartSelected();
+    },
     openPause() {
       ui.state = 'PAUSED'; ui.navScreen = 'main'; ui.navIdx = 0; ui.navMenu = true; ui.save();
     },
     handleKey(e) {
       if (e.repeat) return null;
       if (e.key === 'Enter' && ui.state === 'MENU') { ui.state = 'PLAYING'; return 'start'; }
+      if (ui.logOpen && ui.state === 'PLAYING') {
+        if (e.key === 'Escape' || e.key === 'Tab') { ui.logOpen = false; ui.logIdx = 0; return null; }
+        if (e.key === 'ArrowUp') { ui.logSelect(-1); return 'log-nav'; }
+        if (e.key === 'ArrowDown') { ui.logSelect(1); return 'log-nav'; }
+        if (e.key === 'Enter') { ui.logStartSelected(); return 'log-nav'; }
+        return null;
+      }
       if (ui.state === 'MAP') {
         if (e.key === 'm' || e.key === 'Escape' || e.key === 'Enter') { ui.closeMap(); return 'map-close'; }
         return 'map';
@@ -448,20 +481,28 @@ function drawMissionLog(ctx, ui) {
   ui.missions.list.forEach((m, i) => {
     const y = 172 + i * 42;
     const isActive = active && active.id === m.id;
-    const isDone = i < done;
-    ctx.fillStyle = isActive ? 'rgba(255,210,31,0.18)' : 'rgba(0,0,0,0.25)';
+    const isSide = m.kind === 'side';
+    const isDone = !isSide && i < done;
+    const sel = ui.logOpen && ui.logIdx === i;
+    ctx.fillStyle = sel ? 'rgba(255,210,31,0.32)' : isActive ? 'rgba(255,210,31,0.18)' : 'rgba(0,0,0,0.25)';
     ctx.fillRect(656, y - 15, 268, 34);
-    ctx.fillStyle = isActive ? '#ffd21f' : isDone ? '#7bd66b' : '#999';
+    if (sel) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.strokeRect(656, y - 15, 268, 34); }
+    ctx.fillStyle = isActive ? '#ffd21f' : isDone ? '#7bd66b' : isSide ? '#7fd6ff' : '#999';
     ctx.font = 'bold 14px sans-serif';
     const title = `${i + 1}. ${m.title}`;
     let t = title; while (t.length > 1 && ctx.measureText(t).width > 240) t = t.slice(0, -2).trimEnd() + '\u2026';
     ctx.fillText(t, 666, y + 4);
     ctx.font = '11px sans-serif';
     ctx.fillStyle = isActive ? '#ffe88a' : '#777';
-    ctx.fillText(isActive ? 'BERJALAN' : isDone ? 'SELESAI — ' + m.who : '— ' + m.who, 666, y + 16);
+    ctx.fillText(
+      isActive ? 'BERJALAN'
+        : isSide ? 'SIDE JOB — Enter untuk mulai'
+        : isDone ? 'SELESAI — ' + m.who
+        : '— ' + m.who,
+      666, y + 16);
   });
   ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
-  ctx.fillText('Tab untuk menutup', 662, 172 + ui.missions.list.length * 42 + 10);
+  ctx.fillText('Panah: pilih · Enter: mulai · Tab untuk menutup', 662, 172 + ui.missions.list.length * 42 + 10);
   ctx.restore();
 }
 
