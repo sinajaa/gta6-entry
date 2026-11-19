@@ -79,12 +79,15 @@ export function updateDrivenCar(car, keys, world, dt) {
   }
   const hpMax = car.maxHp || 100;
   const health = 0.6 + 0.4 * Math.max(0, Math.min(1, (car.hp ?? hpMax) / hpMax));
-  const top = (boosting ? MAX * 1.45 : MAX) * health;
+  const flat = Math.max(0, car.flatT ?? 0);
+  if (flat > 0) car.flatT = flat - dt;
+  const flatPenalty = flat > 0 ? 0.45 : 1;
+  const top = (boosting ? MAX * 1.45 : MAX) * health * flatPenalty;
 
   car.speed += (throttle > 0 ? ACCEL * throttle * (boosting ? 2 : 1) : BRAKE * throttle) * dt;
   car.speed *= 1 - DRAG * dt;
   car.speed = Math.max(REVERSE_MAX, Math.min(top, car.speed));
-  car.angle += steer * TURN * dt * (car.speed / MAX) * Math.sign(car.speed);
+  car.angle += steer * TURN * dt * (car.speed / MAX) * Math.sign(car.speed) + (flat > 0 ? Math.sin(world.time * 22) * 0.5 * dt : 0);
   car.x += Math.cos(car.angle) * car.speed * dt;
   car.y += Math.sin(car.angle) * car.speed * dt;
 

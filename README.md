@@ -11,7 +11,8 @@ A 3D open-world crime game that runs offline in Chrome, built by an AI agent for
 - Explore a procedural city with 3 districts, and walk into interiors: a diner, a gun shop and a bank with a vault.
 - Play 8 chained story missions: courier, car chase, execution, escort, warehouse theft, race, police siege and a finale.
 - Switch between 4 weapons (pistol, SMG, shotgun, rifle) with a weapon wheel.
-- Raise a 5-star wanted level and face police cars, a helicopter and roadblocks.
+- Raise a 5-star wanted level and face coordinated police: one cruiser blocks the road ahead, another comes from behind for a PIT manoeuvre, and spike strips appear on the road at three stars or more, alongside the police helicopter and roadblocks.
+- Watch a living city: cars keep lane discipline and stop at red traffic lights at intersections; pedestrians walk the sidewalks, cross at marked crossings, and flee when gunfire erupts nearby.
 - Steal cars, drive through traffic, and repair or repaint them at the garage.
 - Listen to 3 radio stations while driving.
 - Watch the day-night cycle turn, with periodic rain and lightning.

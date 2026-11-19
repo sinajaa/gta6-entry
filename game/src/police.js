@@ -12,9 +12,11 @@ const HEAT_DECAY = 6, NEAR_COP_RANGE = 450, MAX_HEAT = 500;
 const SPAWN_MIN = 450, SPAWN_MAX = 950, DESPAWN_RANGE = 1700, SPAWN_INTERVAL = 0.35;
 const COP_COLOR = '#2456c4', BLOCK_COLOR = '#2a5aff';
 const HELI_SPEED = 260, HELI_OFFSET = 150, BLOCK_MIN = 400, BLOCK_MAX = 700;
+const PIT_RANGE = 60, PIT_ANGLE = 0.7, PIT_SPIN = 0.9, PIT_COOLDOWN = 3;
+const SPIKE_AHEAD_MIN = 170, SPIKE_AHEAD_MAX = 330, SPIKE_MAX = 6, SPIKE_LIFE = 14, SPIKE_CLEAR = 48;
 
 export function createPolice(world) {
-  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0, heli: null, blocks: [] };
+  const state = { stars: 0, heat: 0, cars: [], evadeTimer: 0, lastSeen: null, evading: false, spawnTimer: 0, heli: null, blocks: [], spikes: [], pitCooldown: 0 };
   world.police = state;
   return state;
 }
@@ -292,15 +294,92 @@ function updateRoadblock(state, world, focus, facing) {
   }
 }
 
+function assignRoles(state, world, focus, facing) {
+  const fx = Math.cos(facing), fy = Math.sin(facing);
+  let blocker = null, pitter = null, blockScore = -Infinity, pitScore = -Infinity;
+  for (const cop of state.cars) {
+    if (cop.state !== 'CHASE') continue;
+    cop.role = 'CHASE';
+    const ox = cop.x - focus.x, oy = cop.y - focus.y;
+    const proj = ox * fx + oy * fy;
+    if (proj > 50 && proj > blockScore) { blockScore = proj; blocker = cop; }
+    if (proj < -30 && proj < pitScore) { pitScore = proj; pitter = cop; }
+  }
+  if (blocker) blocker.role = 'BLOCK';
+  if (pitter && pitter !== blocker) pitter.role = 'PIT';
+}
+
+function blockAhead(cop, world, focus, facing, dt) {
+  const aheadX = focus.x + Math.cos(facing) * 170, aheadY = focus.y + Math.sin(facing) * 170;
+  const dx = aheadX - cop.x, dy = aheadY - cop.y, dist = Math.hypot(dx, dy);
+  const near = dist < 90;
+  const targetAngle = near ? facing + Math.PI / 2 : Math.atan2(dy, dx);
+  const diff = normalizeAngle(targetAngle - cop.angle);
+  const turn = 2.6 * dt;
+  cop.angle += Math.max(-turn, Math.min(turn, diff));
+  approachSpeed(cop, near && dist < 55 ? 0 : 150, dt);
+  moveCar(cop, world, dt);
+}
+
+function pitManeuver(cop, state, world, player, dt) {
+  const target = player.car;
+  if (!target) return chase(cop, world, player.car ? player.car : { ...player }, state.stars, dt);
+  const dx = target.x - cop.x, dy = target.y - cop.y, dist = Math.hypot(dx, dy);
+  const behindX = target.x - Math.cos(target.angle) * 34, behindY = target.y - Math.sin(target.angle) * 34;
+  const bdx = behindX - cop.x, bdy = behindY - cop.y;
+  const targetAngle = Math.atan2(bdy, bdx);
+  const diff = normalizeAngle(targetAngle - cop.angle);
+  const turn = 3.0 * dt;
+  cop.angle += Math.max(-turn, Math.min(turn, diff));
+  approachSpeed(cop, 205, dt);
+  moveCar(cop, world, dt);
+  const rel = normalizeAngle(target.angle - cop.angle);
+  if (dist < PIT_RANGE && Math.abs(Math.sin(rel)) > PIT_ANGLE && state.pitCooldown <= 0) {
+    const side = Math.sign(Math.sin(targetAngle - target.angle)) || 1;
+    target.angle += side * PIT_SPIN;
+    target.speed *= 0.5;
+    state.pitCooldown = PIT_COOLDOWN;
+    addHeat(world, 15, 'PIT');
+  }
+}
+
+function updateSpikes(state, world, player, dt) {
+  const focus = focusOf(player);
+  const car = player.car;
+  for (let i = state.spikes.length - 1; i >= 0; i--) {
+    state.spikes[i].life -= dt;
+    if (state.spikes[i].life <= 0 || Math.hypot(state.spikes[i].x - focus.x, state.spikes[i].y - focus.y) > DESPAWN_RANGE) state.spikes.splice(i, 1);
+  }
+  if (!car || state.stars < 3) { if (!car) state.spikes.length = 0; return; }
+  if (state.spikes.length < SPIKE_MAX) {
+    const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
+    const along = SPIKE_AHEAD_MIN + Math.random() * (SPIKE_AHEAD_MAX - SPIKE_AHEAD_MIN);
+    const sx = car.x + fx * along, sy = car.y + fy * along;
+    const ground = tileAt(world, sx, sy);
+    if ((ground === T.ROAD || ground === T.SIDEWALK) && !state.spikes.some((s) => Math.hypot(s.x - sx, s.y - sy) < SPIKE_CLEAR)) {
+      state.spikes.push({ x: sx, y: sy, angle: car.angle, life: SPIKE_LIFE, hit: false });
+    }
+  }
+  for (const s of state.spikes) {
+    if (!s.hit && Math.hypot(s.x - car.x, s.y - car.y) < 24) {
+      s.hit = true;
+      car.flatT = 3 + Math.random() * 2;
+      addHeat(world, 10, 'spike');
+    }
+  }
+}
+
 export function updatePolice(state, world, player, dt) {
   const focus = focusOf(player);
   const facing = player.car ? player.car.angle : player.facing;
   state.spawnTimer -= dt;
+  state.pitCooldown = Math.max(0, state.pitCooldown - dt);
 
   if (state.cars.length < COP_COUNT[state.stars] && state.spawnTimer <= 0) {
     state.spawnTimer = SPAWN_INTERVAL;
     trySpawn(state, world, focus, facing);
   }
+  if (state.stars > 0) assignRoles(state, world, focus, facing);
 
   let seen = false;
   for (let i = state.cars.length - 1; i >= 0; i--) {
@@ -312,13 +391,16 @@ export function updatePolice(state, world, player, dt) {
     }
     if (state.stars > 0) {
       if (cop.state !== 'CHASE') cop.state = 'CHASE';
-      chase(cop, world, player.car ? player.car : { ...player }, state.stars, dt);
+      if (cop.role === 'PIT') pitManeuver(cop, state, world, player, dt);
+      else if (cop.role === 'BLOCK') blockAhead(cop, world, focus, facing, dt);
+      else chase(cop, world, player.car ? player.car : { ...player }, state.stars, dt);
       if (hasLineOfSight(world, cop.x, cop.y, focus.x, focus.y) && Math.hypot(cop.x - focus.x, cop.y - focus.y) < 600) seen = true;
     } else {
       if (cop.state !== 'PATROL') { cop.state = 'PATROL'; assignLane(cop); }
       patrol(cop, world, dt);
     }
   }
+  updateSpikes(state, world, player, dt);
   updateHeli(state, world, focus, facing, dt);
   updateRoadblock(state, world, focus, facing);
   if (seen) state.lastSeen = { x: focus.x, y: focus.y, time: world.time };

@@ -1801,6 +1801,17 @@ function drawMinimap(ctx, world, p, police) {
   if (police) {
     ctx.fillStyle = '#ff2a2a';
     for (const cop of police.cars) { ctx.beginPath(); ctx.arc(cop.x, cop.y, 4 / k, 0, Math.PI * 2); ctx.fill(); }
+    if (police.spikes && police.spikes.length) {
+      ctx.strokeStyle = '#cfd6ff';
+      ctx.lineWidth = 2;
+      for (const s of police.spikes) {
+        const w = 9 / k;
+        ctx.save();
+        ctx.translate(s.x, s.y); ctx.rotate(s.angle);
+        ctx.beginPath(); ctx.moveTo(-w, 0); ctx.lineTo(w, 0); ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
   ctx.restore();
   ctx.save();

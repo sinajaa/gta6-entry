@@ -86,6 +86,17 @@ function snapToSidewalk(world, p) {
   placeNear(world, p, p.x, p.y, 0, 400);
 }
 
+function findCrossing(world, p) {
+  const ahead = 24, span = TILE * 4;
+  for (let k = 0; k < 4; k++) {
+    const a = k * HALF_PI;
+    const x1 = p.x + Math.cos(a) * ahead, y1 = p.y + Math.sin(a) * ahead;
+    const x2 = p.x + Math.cos(a) * span, y2 = p.y + Math.sin(a) * span;
+    if (tileAt(world, x1, y1) === T.ROAD && tileAt(world, x2, y2) === T.SIDEWALK) return { angle: a };
+  }
+  return null;
+}
+
 function startPanic(p, fx, fy) {
   p.state = 'PANIC'; p.timer = PANIC_TIME; p.speed = PANIC_SPEED; p.fx = fx; p.fy = fy;
 }
@@ -126,14 +137,28 @@ export function updatePeds(world, player, peds, dt) {
     } else if (p.state === 'COWER') {
       p.timer -= dt;
       if (p.timer <= 0) { p.state = 'WALK'; p.speed = WALK_SPEED; p.timer = 1 + Math.random() * 4; snapToSidewalk(world, p); }
+    } else if (p.state === 'CROSS') {
+      const step = p.speed * dt;
+      const nx = p.x + Math.cos(p.angle) * step, ny = p.y + Math.sin(p.angle) * step;
+      if (tileAt(world, nx, ny) !== T.BUILDING) { p.x = nx; p.y = ny; }
+      if (onSidewalk(world, p.x, p.y)) {
+        p.state = 'WALK'; p.angle = Math.floor(Math.random() * 4) * HALF_PI; p.timer = 1 + Math.random() * 4;
+        snapToSidewalk(world, p);
+      }
     } else {
       p.speed = WALK_SPEED;
       p.timer -= dt;
       const step = p.speed * dt;
-      if (p.timer <= 0) { p.timer = 2 + Math.random() * 4; turnWalk(world, p); }
+      if (p.timer <= 0) {
+        p.timer = 2 + Math.random() * 4;
+        const cross = Math.random() < 0.12 ? findCrossing(world, p) : null;
+        if (cross) { p.state = 'CROSS'; p.angle = cross.angle; }
+        else turnWalk(world, p);
+      }
+      if (p.state === 'CROSS') continue;
       const nx = p.x + Math.cos(p.angle) * step, ny = p.y + Math.sin(p.angle) * step;
       if (onSidewalk(world, nx + Math.cos(p.angle) * 8, ny + Math.sin(p.angle) * 8)) { p.x = nx; p.y = ny; }
-      else turnWalk(world, p);
+      else if (p.timer <= 0) turnWalk(world, p);
     }
   }
 }
