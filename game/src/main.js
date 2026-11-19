@@ -1,5 +1,5 @@
 // main.js — titik masuk game, loop utama, dan input
-import { createWorld } from './world.js';
+import { createWorld, T, tileAt } from './world.js';
 import { createPlayer, updatePlayer } from './player.js';
 import { updateCamera3D } from './camera.js';
 import { initRenderer, renderFrame } from './render3d.js';
@@ -11,6 +11,12 @@ const world = createWorld();
 const player = createPlayer(42 * 32 + 16, 42 * 32 + 16);
 player.car = null;
 createCars(world, player.x, player.y);
+const startCar = world.cars[0];
+const START_OFFSET = 55;
+const [startDx, startDy] = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+  .find(([dx, dy]) => tileAt(world, startCar.x + dx * START_OFFSET, startCar.y + dy * START_OFFSET) !== T.BUILDING) || [0, 0];
+player.x = startCar.x + startDx * START_OFFSET;
+player.y = startCar.y + startDy * START_OFFSET;
 const police = createPolice(world);
 const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
 let crashCooldown = 0;
@@ -55,4 +61,4 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__game = { world, player, police, keys, gfx };
+window.__game = { world, player, police, keys, gfx, cars: world.cars };

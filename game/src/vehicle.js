@@ -3,7 +3,7 @@ import { TILE, T, tileAt } from './world.js';
 
 const ACCEL = 260, BRAKE = 420, DRAG = 0.9, TURN = 2.4, MAX = 320, REVERSE_MAX = -90;
 const CRUISE = 130, NPC_COUNT = 14, LOOKAHEAD = 40, FOLLOW_DISTANCE = 50, FOLLOW_ANGLE = 0.6;
-const ENTER_RANGE = 46, HALF_LENGTH = 18, HALF_WIDTH = 9;
+const ENTER_RANGE = 60, SPAWN_CAR_RADIUS = 40, HALF_LENGTH = 18, HALF_WIDTH = 9;
 const ROAD_PERIOD = 10 * TILE, ROAD_WIDTH = 2 * TILE, PHASE_SECONDS = 6, STOP_MARGIN = 6;
 const COLORS = ['#e4572e', '#f3a712', '#29a3a3', '#4f86f7', '#e86a92', '#7bc950', '#f5d547', '#a06cd5'];
 const PARKED_SPOTS = [[400, 400, 0], [560, 400, Math.PI], [400, 520, Math.PI / 2], [304, 520, -Math.PI / 2]];
@@ -19,10 +19,32 @@ function makeCar(x, y, angle, color, driver) {
   return { x, y, angle, speed: 0, color, driver };
 }
 
+function parkedNearSpawn(world, spawnX, spawnY) {
+  const isRoad = (x, y) => tileAt(world, x, y) === T.ROAD;
+  let best = null, bestDistance = Infinity;
+  for (let dy = -SPAWN_CAR_RADIUS; dy <= SPAWN_CAR_RADIUS; dy += TILE) {
+    for (let dx = -SPAWN_CAR_RADIUS; dx <= SPAWN_CAR_RADIUS; dx += TILE) {
+      const x = Math.floor((spawnX + dx) / TILE) * TILE + TILE / 2;
+      const y = Math.floor((spawnY + dy) / TILE) * TILE + TILE / 2;
+      const distance = Math.hypot(x - spawnX, y - spawnY);
+      if (distance >= bestDistance || distance > SPAWN_CAR_RADIUS || !isRoad(x, y)) continue;
+      best = { x, y }; bestDistance = distance;
+    }
+  }
+  if (!best) return null;
+  const alongX = isRoad(best.x - TILE, best.y) && isRoad(best.x + TILE, best.y);
+  const alongY = isRoad(best.x, best.y - TILE) && isRoad(best.x, best.y + TILE);
+  const angle = alongX && !alongY ? 0 : Math.PI / 2;
+  return makeCar(best.x, best.y, angle, COLORS[0], null);
+}
+
 export function createCars(world, spawnX, spawnY) {
   const rand = seededRandom(2026);
   const cars = [];
   PARKED_SPOTS.forEach(([x, y, angle], i) => cars.push(makeCar(x, y, angle, COLORS[i * 2 % COLORS.length], null)));
+
+  const spawnCar = parkedNearSpawn(world, spawnX, spawnY);
+  if (spawnCar) cars.push(spawnCar);
 
   let attempts = 0;
   while (cars.length < PARKED_SPOTS.length + NPC_COUNT && attempts++ < 500) {
