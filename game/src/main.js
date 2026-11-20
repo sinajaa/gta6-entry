@@ -25,6 +25,7 @@ import { createPhoto, updatePhoto } from './photo.js';
 import { createRadio, updateRadio } from './radio.js';
 import { createMechanic, updateMechanic } from './mechanic.js';
 import { createGangs, updateGangs } from './gangs.js';
+import { createDispatch, updateDispatch } from './dispatch.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -80,13 +81,14 @@ const taxi = createTaxi({ world, ui, audio, gfx, player });
 const radio = createRadio({ ui, audio, gfx });
 const mechanic = createMechanic({ world, ui, gfx, keys });
 const objectiveView = {
-  get markers() { return heists.active ? heists.markers : races.active ? races.markers : taxi.active ? taxi.markers : missions.markers; },
-  get target() { return heists.active ? heists.target : races.active ? races.target : taxi.active ? taxi.target : missions.target; },
-  get objectiveText() { return heists.active ? heists.objectiveText : races.active ? races.objectiveText : taxi.active ? taxi.objectiveText : missions.objectiveText; },
+  get markers() { return heists.active ? heists.markers : races.active ? races.markers : taxi.active ? taxi.markers : dispatch.active ? dispatch.markers : missions.markers; },
+  get target() { return heists.active ? heists.target : races.active ? races.target : taxi.active ? taxi.target : dispatch.active ? dispatch.target : missions.target; },
+  get objectiveText() { return heists.active ? heists.objectiveText : races.active ? races.objectiveText : taxi.active ? taxi.objectiveText : dispatch.active ? dispatch.objectiveText : missions.objectiveText; },
 };
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
 const gangs = createGangs({ world, ui, audio, combat, peds, gfx });
+const dispatch = createDispatch({ world, ui, audio, gfx, player });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
@@ -246,6 +248,7 @@ addEventListener('keydown', (e) => {
     if (k === 't' && !e.repeat) { if (taxi.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }
     if (k === 'j' && !e.repeat) { if (gangs.onKey && gangs.onKey('j')) { e.preventDefault(); return; } }
+    if (k === 'g' && !e.repeat) { if (dispatch.onKey()) { e.preventDefault(); return; } }
   }
   pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
@@ -332,6 +335,7 @@ function frame(now) {
   updateRaces(races, dt, player);
   updateEconomy(economy, dt, player);
   updateTaxi(taxi, dt, player);
+  updateDispatch(dispatch, dt, player);
   updateRadio(radio, dt, player);
   combat.update(dt, keys, rawDt);
   updateStats(stats, dt, player);
@@ -362,5 +366,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic, gangs };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic, gangs, dispatch };
 setInterval(persistSaveCounters, 20000);
