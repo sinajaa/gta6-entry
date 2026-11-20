@@ -17,6 +17,7 @@ import { createShot } from './shots.js';
 import { createExtras } from './extras.js';
 import { createInteriors } from './interiors.js';
 import { createHeists, updateHeists } from './heist.js';
+import { createRaces, updateRaces } from './races.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -67,10 +68,11 @@ const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 ui.link(world, missions, player);
 const heists = createHeists({ world, ui, audio, gfx, player });
+const races = createRaces({ world, ui, audio, gfx, player });
 const objectiveView = {
-  get markers() { return heists.active ? heists.markers : missions.markers; },
-  get target() { return heists.active ? heists.target : missions.target; },
-  get objectiveText() { return heists.active ? heists.objectiveText : missions.objectiveText; },
+  get markers() { return heists.active ? heists.markers : races.active ? races.markers : missions.markers; },
+  get target() { return heists.active ? heists.target : races.active ? races.target : missions.target; },
+  get objectiveText() { return heists.active ? heists.objectiveText : races.active ? races.objectiveText : missions.objectiveText; },
 };
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
@@ -201,6 +203,7 @@ addEventListener('keydown', (e) => {
     if (k === 'p' && !e.repeat) { ui.openPhoto(); keys.clear(); combat.mouseDown = false; e.preventDefault(); return; }
     if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
     if (k === 'h' && !e.repeat) { if (heists.onKey()) { e.preventDefault(); return; } }
+    if (k === 'k' && !e.repeat) { if (races.onKey()) { e.preventDefault(); return; } }
   }
   // Navigasi mode foto (orbit + simpan).
   if (ui.state === 'PHOTO') {
@@ -298,6 +301,7 @@ function frame(now) {
   updatePeds(world, player, peds, dt);
   missions.update(dt, player, world);
   updateHeists(heists, dt, player);
+  updateRaces(races, dt, player);
   combat.update(dt, keys, rawDt);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
@@ -323,5 +327,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races };
 setInterval(persistSaveCounters, 20000);
