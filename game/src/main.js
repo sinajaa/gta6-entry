@@ -240,6 +240,8 @@ addEventListener('keydown', (e) => {
     if (k === 'p' && !e.repeat) { ui.openPhoto(); keys.clear(); combat.mouseDown = false; e.preventDefault(); return; }
     if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
     if (k === 'h' && !e.repeat) { if (heists.onKey()) { e.preventDefault(); return; } }
+    if (k === 'b' && !e.repeat) { if (heists.onHire()) { e.preventDefault(); return; } }
+    if ((k === '1' || k === '2' || k === '3' || k === 'arrowup' || k === 'arrowdown') && !e.repeat) { if (heists.onMenuKey(k)) { e.preventDefault(); return; } }
     if (k === 'k' && !e.repeat) { if (races.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { if (taxi.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }

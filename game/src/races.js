@@ -17,11 +17,14 @@ const PULSE_HEAT = 12;           // heat ringan per detik saat keluar jalur jala
 const START_SIGNAL_SECONDS = 3;  // jeda "3, 2, 1, GO" sebelum stopwatch dihitung
 
 // ——— DATA RUTE ———
-// Tiga rute dengan kepribadian berbeda; checkpoint dihasilkan dari lanePoints (grid jalan).
+// Lima rute dengan kepribadian berbeda; checkpoint dihasilkan dari lanePoints (grid jalan).
+// `ghost` adalah waktu lap terbaik pabrikan (detik) yang jadi patokan rekor "ghost".
 const ROUTE_DEFS = [
-  { id: 'coast', name: 'PANTAI SPRINT', checkpoints: CHECKPOINT_COUNT, limit: TIME_LIMIT },
-  { id: 'grid', name: 'LOOP PUSAT KOTA', checkpoints: CHECKPOINT_COUNT + 1, limit: TIME_LIMIT + 20 },
-  { id: 'harbor', name: 'KELILING PELABUHAN', checkpoints: CHECKPOINT_COUNT + 2, limit: TIME_LIMIT + 40 },
+  { id: 'coast', name: 'PANTAI SPRINT', checkpoints: CHECKPOINT_COUNT, limit: TIME_LIMIT, ghost: 52 },
+  { id: 'grid', name: 'LOOP PUSAT KOTA', checkpoints: CHECKPOINT_COUNT + 1, limit: TIME_LIMIT + 20, ghost: 64 },
+  { id: 'harbor', name: 'KELILING PELABUHAN', checkpoints: CHECKPOINT_COUNT + 2, limit: TIME_LIMIT + 40, ghost: 78 },
+  { id: 'mountain', name: 'PUNCAK BUKIT', checkpoints: CHECKPOINT_COUNT + 3, limit: TIME_LIMIT + 50, ghost: 88 },
+  { id: 'industrial', name: 'KABUPIN INDUSTRI', checkpoints: CHECKPOINT_COUNT + 1, limit: TIME_LIMIT + 30, ghost: 70 },
 ];
 
 // ——— HELPER MURNI ———
@@ -33,6 +36,12 @@ function fmtTime(seconds) {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+// Selisih waktu terpaksa singkat: "+N detik" ketika tertinggal dari ghost, "UNGGUL" bila unggul.
+function dtGhost(elapsed, ghost) {
+  const d = Math.max(0, Math.round(elapsed - ghost));
+  return d > 0 ? '+' + d + 's' : 'UNGGUL';
 }
 
 // Pilih satu titik jalur masif dalam rentang [min,max] dari `from`; mundur ke semua lanePoints.
@@ -89,10 +98,12 @@ function drawRacePanel(r) {
     rows.push(['WAKTU  ' + fmtTime(r.elapsed), '#7fe3ff']);
     rows.push(['CHECKPOINT ' + Math.min(r.checkpoint + 1, r.route.checkpoints.length) + '/' + r.route.checkpoints.length, '#ffd21f']);
     rows.push(['HADIAH  $' + payoutFor(r.elapsed), '#7bd66b']);
+    if (r.ghost != null) rows.push(['GHOST  ' + fmtTime(r.ghost) + ' (' + (r.elapsed <= r.ghost ? 'UNGGUL' : dtGhost(r.elapsed, r.ghost)) + ')', '#b48cff']);
   } else if (r.phase === 'finished') {
     rows.push(['SELESAI — ' + fmtTime(r.elapsed), '#7bd66b']);
     rows.push(['HADIAH +$' + r.lastReward, '#7bd66b']);
     if (r.routeBest != null) rows.push(['TERBAIK ' + fmtTime(r.routeBest), '#e0e0e0']);
+    if (r.ghost != null) rows.push(['GHOST ' + fmtTime(r.ghost) + (r.beatGhost ? ' — KALAHKAN!' : ''), '#b48cff']);
   } else if (r.phase === 'failed') {
     rows.push(['BALAPAN GAGAL', '#ff6a5a']);
     rows.push(['TEKAN K UNTUK ULANG', '#ffd21f']);
@@ -135,6 +146,8 @@ export function createRaces(ctx) {
     lastReward: 0,
     routeBest: null,            // waktu terbaik untuk rute ini (null = belum pernah)
     bestByRoute: {},            // cache waktu terbaik per id rute (dalam memori)
+    ghost: null,                // waktu lap ghost pabrikan untuk rute aktif (detik)
+    beatGhost: false,           // true bila finish lebih cepat dari ghost
     markers: [],
     target: null,
     objectiveText: '',
@@ -168,6 +181,8 @@ export function createRaces(ctx) {
       r.route = { ...def, checkpoints, finish, start: { x: from.x, y: from.y } };
       r.routeName = def.name;
       r.routeBest = r.bestByRoute[def.id] != null ? r.bestByRoute[def.id] : null;
+      r.ghost = def.ghost;
+      r.beatGhost = false;
       r.checkpoint = 0;
       r.elapsed = 0;
       r.countdown = START_SIGNAL_SECONDS;
@@ -197,9 +212,12 @@ export function createRaces(ctx) {
       const isBest = r.bestByRoute[id] == null || r.elapsed < r.bestByRoute[id];
       if (isBest) r.bestByRoute[id] = r.elapsed;
       r.routeBest = r.bestByRoute[id];
+      r.beatGhost = r.ghost != null && r.elapsed < r.ghost;
       ui.addMoney(reward);
       audio.complete();
-      ui.toast('BALAPAN SELESAI +$' + reward + (isBest ? ' — REKOR BARU!' : ''), 4);
+      ui.toast('BALAPAN SELESAI +$' + reward
+        + (r.beatGhost ? ' — KALAHKAN GHOST!' : '')
+        + (isBest ? ' — REKOR BARU!' : ''), 4);
       r.phase = 'finished';
       r.markers = [];
       r.target = null;
