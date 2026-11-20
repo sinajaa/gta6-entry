@@ -1,5 +1,11 @@
 // render3d.js — render kota 3D dengan three.js dan HUD overlay
 // Kota 3D digambar oleh renderer yang disusun sendiri di atas three.js.
+//
+// Render order (jangan diubah — framing/exposure sudah di-tune manual):
+//   1. build scene  — susun geometri & entitas kota
+//   2. lights       — set sun/moon & bayangan
+//   3. tone mapping — exposure + tone mapping
+//   4. post         — post-processing & HUD overlay
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, COLS, ROWS, T, WORLD_W, WORLD_H, districtOfBlock } from './world.js';
 import { nearestEnterable } from './vehicle.js';
