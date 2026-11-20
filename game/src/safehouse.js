@@ -84,7 +84,10 @@ export function createSafehouses(ctx) {
 
   function applyOutfit() {
     const mesh = gfx.playerMesh;
-    if (mesh && mesh.material && mesh.material.color) mesh.material.color.set(outfitDef(state.outfit).body);
+    if (!mesh || !mesh.material || !mesh.material.color) return;
+    // material pemain dipakai bersama mesh lain; clone sekali agar outfit tidak mewarnai kota.
+    if (!mesh.userData.outfitClone) { mesh.material = mesh.material.clone(); mesh.userData.outfitClone = true; }
+    mesh.material.color.set(outfitDef(state.outfit).body);
   }
 
   // ---- aksi panel ----------------------------------------------------------------------
@@ -202,7 +205,7 @@ export function createSafehouses(ctx) {
     return true;
   }
 
-  applyOutfit();
+  // applyOutfit() dipanggil saat outfit diganti; warna awal dibiarkan seperti bawaan.
 
   return {
     get open() { return state.open; },
@@ -291,20 +294,9 @@ export function updateSafehouses(st, dt, player) {
   st.playerRef = player;
   const s = currentProxy(st);
   // prompt jarak dekat bila tidak sedang membuka panel dan status main.
-  if (!st.open && st.ui.state === 'PLAYING' && s) {
-    const owned = st.own.has(s.id);
-    st.ui.prompt = 'O: ' + (owned ? s.label : 'Beli ' + s.label + ' $' + s.price);
-  }
   // tutup panel bila menjauh atau keluar dari status main.
   if (st.open && (st.ui.state !== 'PLAYING' || !s)) st.open = false;
 
-  // jaga warna karakter tetap sesuai outfit.
-  const body = outfitDef(st.outfit).body;
-  if (st._lastBody !== body) {
-    const mesh = st.gfx.playerMesh;
-    if (mesh && mesh.material && mesh.material.color) mesh.material.color.set(body);
-    st._lastBody = body;
-  }
 
   if (st.open && s) drawPanel(st, s, st.ui);
   void dt;
