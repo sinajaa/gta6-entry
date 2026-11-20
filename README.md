@@ -16,6 +16,11 @@ A 3D open-world crime game that runs offline in your browser, built with three.j
 - **Side jobs** — bank heist, taxi, stunt jumps, a bounty chase, pizza delivery, and car repossession.
 - **Interiors** — walk into a diner, a gun shop, and a bank with a vault.
 - **Audio** — three radio stations and per-weapon sound.
+- **Heist crew** — hire a crew and pick a getaway for the heist, with escape routes.
+- **Gang turf** — three rival gangs claim block territories; clear a block to capture turf.
+- **Tuning shop** — per-car tuning with a persisted garage record.
+- **Car radio** — six stations with DJ banter.
+- **Photo mode** — filters, grid and PNG save.
 - **Save** — progress and settings persist in `localStorage`.
 
 ## Controls

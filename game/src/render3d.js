@@ -1,6 +1,14 @@
 // render3d.js — render kota 3D dengan three.js dan HUD overlay
 // Kota 3D digambar oleh renderer yang disusun sendiri di atas three.js.
 //
+// Selain kota, renderer juga menggambar overlay untuk modul gameplay v8:
+//   - heist.js    — penanda misi heist (marker) & objek interaktif
+//   - race.js     — checkpoint perlombaan yang di-highlight
+//   - gangs.js    — tint warna wilayah (turf) tiap geng
+//   - photo.js    — grid komposisi untuk mode foto
+// Urutan render tetap tidak berubah; overlay ditumpuk di atas kota seperti
+// sebelumnya, tanpa menyentuh framing atau exposure.
+//
 // Render order (jangan diubah — framing/exposure sudah di-tune manual):
 //   1. build scene  — susun geometri & entitas kota
 //   2. lights       — set sun/moon & bayangan
