@@ -37,6 +37,7 @@ function placeNear(world, p, cx, cy, minD, maxD) {
       if (e < best) { best = e; pick = c; }
     }
   }
+  if (!pick) { p.x = px; p.y = py; pick = [px, py]; } // fallback bila tidak ada trotoar tersedia
   p.x = pick[0]; p.y = pick[1];
   p.angle = Math.floor(Math.random() * 4) * HALF_PI;
   p.state = 'WALK';

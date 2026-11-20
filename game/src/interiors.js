@@ -139,8 +139,10 @@ export function createInteriors({ world, player, ui, gfx, combat }) {
   const nearDoor = () => doors.find((d) => Math.hypot(d.x - player.x, d.y - player.y) < DOOR_RANGE);
   const nearSpot = () => {
     if (!it.active) return null;
+    const door = doors[it.current];
+    if (!door) return null;
     const cx = WORLD_W / 2, cy = WORLD_H / 2;
-    return SPOTS[doors[it.current].kind].find((s) => Math.hypot(cx + s.x - player.x, cy + s.z - player.y) < USE_RANGE) || null;
+    return SPOTS[door.kind].find((s) => Math.hypot(cx + s.x - player.x, cy + s.z - player.y) < USE_RANGE) || null;
   };
   const nearExit = () => Math.hypot(player.x - exitPos.x, player.y - exitPos.y) <= DOOR_RANGE;
 

@@ -73,6 +73,7 @@ function enterCar(c, car, x, y, angle, speed) {
 function placePeds(c, spots) {
   spots.forEach(([x, y, angle], i) => {
     const p = c.peds[i];
+    if (!p) return;
     p.x = x; p.y = y; p.angle = angle; p.state = 'WALK'; p.speed = 55; p.timer = 6 + Math.random() * 4;
     p.scale = 0.85 + Math.random() * 0.3;
   });

@@ -352,7 +352,7 @@ export function createExtras({ world, player, ui, audio, gfx }) {
     }
     gfx.wetAmount = wet;
     sheen.visible = wet > 0.02;
-    sheenMat.opacity = wet * (0.6 + 0.4 * gfx.night) + flash * 0.3;
+    sheenMat.opacity = clamp(wet * (0.6 + 0.4 * gfx.night) + flash * 0.3, 0, 1);
     if (gfx.ground) gfx.ground.material.color.setScalar(1 - 0.32 * wet);
   }
 

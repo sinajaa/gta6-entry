@@ -5,6 +5,7 @@ import { TILE, T, tileAt } from './world.js';
 const ACCEL = 260, BRAKE = 420, DRAG = 0.9, TURN = 2.4, MAX = 320, REVERSE_MAX = -90;
 const DRIFT_MIN_SPEED = 110, DRIFT_SCORE_RATE = 32, DRIFT_DECAY = 40, DRIFT_MIN_SCORE = 12, DRIFT_CASH_RATE = 0.5;
 const CRUISE = 130, NPC_COUNT = 28, LOOKAHEAD = 40, FOLLOW_DISTANCE = 50, FOLLOW_ANGLE = 0.6;
+const NITRO_TOP_MULT = 1.45;
 const ENTER_RANGE = 60, SPAWN_CAR_RADIUS = 40, HALF_LENGTH = 18, HALF_WIDTH = 9;
 const ROAD_PERIOD = 10 * TILE, ROAD_WIDTH = 2 * TILE, PHASE_SECONDS = 6, STOP_MARGIN = 6;
 const COLORS = ['#e4572e', '#f3a712', '#29a3a3', '#4f86f7', '#e86a92', '#7bc950', '#f5d547', '#a06cd5'];
@@ -83,7 +84,7 @@ export function updateDrivenCar(car, keys, world, dt) {
   const flat = Math.max(0, car.flatT ?? 0);
   if (flat > 0) car.flatT = flat - dt;
   const flatPenalty = flat > 0 ? 0.45 : 1;
-  const top = (boosting ? MAX * 1.45 : MAX) * health * flatPenalty;
+  const top = (boosting ? MAX * NITRO_TOP_MULT : MAX) * health * flatPenalty;
 
   car.speed += (throttle > 0 ? ACCEL * throttle * (boosting ? 2 : 1) : BRAKE * throttle) * dt;
   const handbrake = keys.has(' ');
