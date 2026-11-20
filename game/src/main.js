@@ -29,6 +29,7 @@ import { createDispatch, updateDispatch } from './dispatch.js';
 import { createSafehouses, updateSafehouses } from './safehouse.js';
 import { createArcade, updateArcade } from './arcade.js';
 import { createStunts, updateStunts } from './stunts.js';
+import { createNightlife, updateNightlife } from './nightlife.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -95,6 +96,7 @@ const dispatch = createDispatch({ world, ui, audio, gfx, player });
 const safehouses = createSafehouses({ world, ui, gfx, player });
 const arcade = createArcade({ ui, audio, gfx, keys });
 const stunts = createStunts({ world, ui, audio, gfx });
+const nightlife = createNightlife({ world, ui, audio, gfx });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
@@ -261,6 +263,9 @@ addEventListener('keydown', (e) => {
     if (arcade.open || k === 'l') {
       if (!e.repeat && arcade.onKey(k)) { e.preventDefault(); return; }
     }
+    if (nightlife.open || k === 'n') {
+      if (!e.repeat && nightlife.onKey(k)) { e.preventDefault(); return; }
+    }
   }
   pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
@@ -351,6 +356,7 @@ function frame(now) {
   updateSafehouses(safehouses, dt, player);
   updateArcade(arcade, dt, player);
   updateStunts(stunts, dt, player);
+  updateNightlife(nightlife, dt, player);
   updateRadio(radio, dt, player);
   combat.update(dt, keys, rawDt);
   updateStats(stats, dt, player);
@@ -381,5 +387,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic, gangs, dispatch, safehouses, arcade, stunts };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic, gangs, dispatch, safehouses, arcade, stunts, nightlife };
 setInterval(persistSaveCounters, 20000);
