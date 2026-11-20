@@ -16,6 +16,7 @@ import { createCars, updateDrivenCar, updateTraffic, toggleVehicle } from './veh
 import { createShot } from './shots.js';
 import { createExtras } from './extras.js';
 import { createInteriors } from './interiors.js';
+import { createHeists, updateHeists } from './heist.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -65,6 +66,12 @@ ui.rep = createStanding(ui);
 const audio = createAudio();
 const missions = createMissions(world, ui, audio);
 ui.link(world, missions, player);
+const heists = createHeists({ world, ui, audio, gfx, player });
+const objectiveView = {
+  get markers() { return heists.active ? heists.markers : missions.markers; },
+  get target() { return heists.active ? heists.target : missions.target; },
+  get objectiveText() { return heists.active ? heists.objectiveText : missions.objectiveText; },
+};
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
@@ -193,6 +200,7 @@ addEventListener('keydown', (e) => {
     if (k === 'm' && !e.repeat) { ui.openMap(); e.preventDefault(); return; }
     if (k === 'p' && !e.repeat) { ui.openPhoto(); keys.clear(); combat.mouseDown = false; e.preventDefault(); return; }
     if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
+    if (k === 'h' && !e.repeat) { if (heists.onKey()) { e.preventDefault(); return; } }
   }
   // Navigasi mode foto (orbit + simpan).
   if (ui.state === 'PHOTO') {
@@ -289,6 +297,7 @@ function frame(now) {
   }
   updatePeds(world, player, peds, dt);
   missions.update(dt, player, world);
+  updateHeists(heists, dt, player);
   combat.update(dt, keys, rawDt);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
@@ -298,7 +307,7 @@ function frame(now) {
     gfx.hour = MENU_HOUR + (menuHour.hour - MENU_HOUR) * menuCam.s;
     if (menuCam.phase === 'done') { gfx.hour = menuHour.hour; gfx.frozenHour = menuHour.frozen; gfx.lastClock = performance.now(); }
   }
-  renderFrame(gfx, world, player, fps, police, peds, missions, combat);
+  renderFrame(gfx, world, player, fps, police, peds, objectiveView, combat);
   if (blending) blendCameraEnd(menuCam, gfx.camera);
   const focus = car || player;
   let nearest = Infinity;
