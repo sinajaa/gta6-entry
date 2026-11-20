@@ -23,6 +23,7 @@ import { createStats, updateStats } from './stats.js';
 import { createTaxi, updateTaxi } from './taxi.js';
 import { createPhoto, updatePhoto } from './photo.js';
 import { createRadio, updateRadio } from './radio.js';
+import { createMechanic, updateMechanic } from './mechanic.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -76,6 +77,7 @@ const heists = createHeists({ world, ui, audio, gfx, player });
 const races = createRaces({ world, ui, audio, gfx, player });
 const taxi = createTaxi({ world, ui, audio, gfx, player });
 const radio = createRadio({ ui, audio, gfx });
+const mechanic = createMechanic({ world, ui, gfx, keys });
 const objectiveView = {
   get markers() { return heists.active ? heists.markers : races.active ? races.markers : taxi.active ? taxi.markers : missions.markers; },
   get target() { return heists.active ? heists.target : races.active ? races.target : taxi.active ? taxi.target : missions.target; },
@@ -217,6 +219,9 @@ addEventListener('keydown', (e) => {
     if (k === 'escape') { economy.cancel(); e.preventDefault(); return; }
     if (k === 'e' || k === 'enter') { if (!e.repeat) economy.confirm(); e.preventDefault(); return; }
   }
+  if (ui.state === 'PLAYING' && (mechanic.open || k === 'u') && !e.repeat) {
+    if (mechanic.onKey(k, player)) { e.preventDefault(); return; }
+  } else if (mechanic.open && ui.state === 'PLAYING') { e.preventDefault(); return; }
   if (k === 'r' && !e.repeat && ui.state === 'PLAYING' && player.car) {
     radio.next();
   }
@@ -290,6 +295,7 @@ function frame(now) {
     }
   }
   else if (!interiors.update(dt, input)) updatePlayer(player, input, world, dt);
+  updateMechanic(mechanic, dt, player);
   extras.update(dt);
   setRadioKey();
   updateTraffic(world, dt);
@@ -345,5 +351,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic };
 setInterval(persistSaveCounters, 20000);
