@@ -19,6 +19,7 @@ import { createInteriors } from './interiors.js';
 import { createHeists, updateHeists } from './heist.js';
 import { createRaces, updateRaces } from './races.js';
 import { createEconomy, updateEconomy } from './economy.js';
+import { createStats, updateStats } from './stats.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -81,6 +82,7 @@ const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
 const economy = createEconomy({ world, player, ui, audio, gfx, combat });
+const stats = createStats({ world, player, ui, audio, combat, missions, heists, races, gfx });
 gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
 
 // Terapkan pengaturan (kualitas render, bayangan, sensitivitas mouse, volume) ke sistem.
@@ -216,6 +218,7 @@ addEventListener('keydown', (e) => {
     if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
     if (k === 'h' && !e.repeat) { if (heists.onKey()) { e.preventDefault(); return; } }
     if (k === 'k' && !e.repeat) { if (races.onKey()) { e.preventDefault(); return; } }
+    if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }
   }
   // Navigasi mode foto (orbit + simpan).
   if (ui.state === 'PHOTO') {
@@ -316,6 +319,7 @@ function frame(now) {
   updateRaces(races, dt, player);
   updateEconomy(economy, dt, player);
   combat.update(dt, keys, rawDt);
+  updateStats(stats, dt, player);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
   const blending = menuCam && menuCam.phase === 'blend';
@@ -341,5 +345,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats };
 setInterval(persistSaveCounters, 20000);
