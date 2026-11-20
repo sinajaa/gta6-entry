@@ -18,6 +18,7 @@ import { createExtras } from './extras.js';
 import { createInteriors } from './interiors.js';
 import { createHeists, updateHeists } from './heist.js';
 import { createRaces, updateRaces } from './races.js';
+import { createEconomy, updateEconomy } from './economy.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -79,6 +80,7 @@ const combat = createCombat({ gfx, world, player, police, peds, ui, missions, au
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
+const economy = createEconomy({ world, player, ui, audio, gfx, combat });
 gfx.interiorBefore = interiors.beforeDraw; gfx.interiorAfter = interiors.afterDraw;
 
 // Terapkan pengaturan (kualitas render, bayangan, sensitivitas mouse, volume) ke sistem.
@@ -141,6 +143,7 @@ addEventListener('beforeunload', () => { ui.save(); persistSaveCounters(); });
 
 function enterExit() {
   if (extras.garage.open) return;
+  if (economy.tryInteract()) return;
   if (interiors.tryInteract()) return;
   const wasOnFoot = !player.car;
   toggleVehicle(world, player);
@@ -164,7 +167,11 @@ const touch = createTouch({
     }
   },
   onButton(k, down) {
-    if (k === 'Escape') { if (down) pressKey({ key: 'Escape', repeat: false }); return; }
+    if (k === 'Escape') {
+      if (down && economy.active) { economy.cancel(); return; }
+      if (down) pressKey({ key: 'Escape', repeat: false });
+      return;
+    }
     if (ui.state !== 'PLAYING') return;
     if (k === 'e') { if (down) enterExit(); }
     else if (k === 'f') combat.mouseDown = down;
@@ -194,6 +201,11 @@ function saveScreenshot() {
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (ui.state === 'PLAYING' && extras.handleKey(k, e.repeat)) { e.preventDefault(); return; }
+  // Menu konfirmasi pembelian: E/Enter = beli, ESC = batal.
+  if (economy.active && ui.state === 'PLAYING') {
+    if (k === 'escape') { economy.cancel(); e.preventDefault(); return; }
+    if (k === 'e' || k === 'enter') { if (!e.repeat) economy.confirm(); e.preventDefault(); return; }
+  }
   if (k === 'r' && !e.repeat && ui.state === 'PLAYING' && player.car) {
     ui.station = audio.nextStation(); ui.stationT = 2.5; setRadioKey();
   }
@@ -302,6 +314,7 @@ function frame(now) {
   missions.update(dt, player, world);
   updateHeists(heists, dt, player);
   updateRaces(races, dt, player);
+  updateEconomy(economy, dt, player);
   combat.update(dt, keys, rawDt);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
@@ -320,6 +333,7 @@ function frame(now) {
   audio.setSiren(police.stars > 0 ? proximity * (0.5 + 0.1 * police.stars) : 0);
   ui.wanted = police.stars;
   ui.update(0);
+  economy.drawMenu();
   requestAnimationFrame(frame);
 }
 if (new URLSearchParams(location.search).has('shot')) {
@@ -327,5 +341,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy };
 setInterval(persistSaveCounters, 20000);

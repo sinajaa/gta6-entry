@@ -478,6 +478,9 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
 
   function hurtPlayer(dmg) {
     if (c.dead) return;
+    // Pelindung (armor) menyerap kerusakan dulu, sisanya ke kesehatan.
+    const armor = player.armor || 0;
+    if (armor > 0) { const absorbed = Math.min(armor, dmg); player.armor = armor - absorbed; dmg -= absorbed; }
     player.health -= dmg;
     c.sinceHit = 0;
     c.vignette = VIGNETTE_TIME;
