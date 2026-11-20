@@ -1,4 +1,5 @@
 // standing.js — reputasi pemain per distrik (pusat/tengah/pinggir): diskon, heat shield, toast
+// v8: reputasi pemain per distrik dengan diskon dan heat shield untuk SUNNY CITY.
 import { districtAt } from './world.js';
 
 export const DISTRICT_NAMES = ['PUSAT', 'TENGAH', 'PINGGIR'];

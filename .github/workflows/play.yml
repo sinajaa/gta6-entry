@@ -1,4 +1,5 @@
 # Alur deploy ini disusun sendiri agar game bisa dimainkan langsung dari browser.
+# v8: builds the SUNNY CITY dossier and deploys game/ to GitHub Pages (deploy-play).
 name: deploy-play
 
 on:

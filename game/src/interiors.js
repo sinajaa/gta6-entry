@@ -1,4 +1,5 @@
 // interiors.js — lima interior sederhana: masuk/keluar dengan E
+// v8: lima interior sederhana yang bisa dimasuki/ditinggali dengan tombol E.
 // Setiap interior dibangun dari data tabel (KINDS), diatur perabot oleh furnish(),
 // dan dikendalikan oleh satu mesin status yang kembali dari createInteriors().
 import * as THREE from '../vendor/three.module.min.js';

@@ -1,4 +1,5 @@
 // touch.js — joystick virtual + tombol sentuh (E/F/LARI/HANDBRAKE/PAUSE) untuk HP
+// v8: joystick virtual dan tombol sentuh untuk kontrol layar sentuh SUNNY CITY.
 // SUNNY CITY — authored pass 2026-11-19 (recording 03)
 const BUTTON_KEYS = { e: 'e', f: 'f', run: 'shift', brake: ' ', pause: 'Escape' };
 const DEAD_ZONE = 0.12;

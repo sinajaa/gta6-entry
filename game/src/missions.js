@@ -1,4 +1,5 @@
 // missions.js — rantai 8 misi cerita + 6 pekerjaan sampingan untuk SUNNY CITY.
+// v8: rantai 8 misi cerita dan pekerjaan sampingan taksi/heist/stunt untuk SUNNY CITY.
 // Semua logika misi disusun ulang: konstanta bernama, helper kecil, tabel data,
 // dan registri handler per-misi. Kontrak ekspor (MISSION_LIST, createMissions)
 // serta permukaan objek yang dipakai modul lain dipertahankan.

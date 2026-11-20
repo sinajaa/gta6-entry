@@ -1,4 +1,5 @@
 // shots.js — adegan screenshot deterministik: ?shot=street|chase|firefight|driving (&seed=N)
+// v8: adegan screenshot deterministik untuk tangkapan layar SUNNY CITY.
 // Adegan tangkapan layar deterministik ini dirancang sendiri untuk entry.
 import * as THREE from '../vendor/three.module.min.js';
 import { WORLD_W, WORLD_H } from './world.js';

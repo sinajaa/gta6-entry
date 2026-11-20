@@ -1,4 +1,5 @@
 // audio.js — efek suara sintetis WebAudio; AudioContext baru dibuat setelah gesture
+// v8: soundscape synth WebAudio lengkap — musik adaptif, mesin, senjata, dan ambience kota.
 // Suara game disusun dengan tangan sendiri lewat WebAudio, tanpa berkas audio luar.
 // Lapisan: music director adaptif (bass/chord/drum per heat + distrik), engine & ban
 // yang mengikuti kecepatan dengan pitching doppler-ish, senjata per jenis + reverb ekor,

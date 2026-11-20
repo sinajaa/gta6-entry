@@ -1,4 +1,5 @@
 // player.js — gerak dan kontrol pemain berjalan kaki
+// v8: kontrol pemain berjalan kaki, stamina, dan renang untuk SUNNY CITY.
 // Kontrol jalan kaki pemain dibuat sendiri dan disetel lewat uji coba.
 const WALK = 150, SPRINT = 260, ACCEL = 1400;
 const SWIM = 70, WATER_EDGE = 260;

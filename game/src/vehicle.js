@@ -1,4 +1,5 @@
 // vehicle.js — mobil, fisika mengemudi, dan lalu lintas NPC
+// v8: mobil yang bisa dikemudi/dicuri dengan fisika mengemudi dan lalu lintas NPC.
 // Fisika mobil dan lalu lintas NPC dikembangkan sendiri dari awal.
 import { TILE, T, tileAt } from './world.js';
 

@@ -1,4 +1,5 @@
 // extras.js — garasi, paket collectible, dan cuaca (hujan, jalan basah, petir)
+// v8: garasi, paket collectible, dan cuaca termasuk hujan dan petir untuk SUNNY CITY.
 // Garasi, paket, dan cuaca di sini dikerjakan sebagai tambahan kedalaman gameplay.
 import * as THREE from '../vendor/three.module.min.js';
 import { TILE, T, tileAt, districtAt, WORLD_W, WORLD_H } from './world.js';

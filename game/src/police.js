@@ -1,4 +1,5 @@
 // police.js — level buruan dan polisi AI pengejar
+// v8: sistem buruan 5 bintang dengan polisi AI pengejar untuk SUNNY CITY.
 // Sistem buruan dan polisi AI ini murni buatan penulis entry.
 import { TILE, T, tileAt } from './world.js';
 

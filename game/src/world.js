@@ -1,4 +1,5 @@
 // world.js — grid kota, tile, dan bounding box bangunan
+// v8: grid kota prosedural, tile, dan collider bangunan untuk SUNNY CITY.
 // Tata letak kota dan bangunannya digambar sendiri oleh penulis entry.
 export const TILE = 32;
 export const COLS = 80;
