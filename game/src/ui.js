@@ -306,7 +306,7 @@ function drawStanding(ctx, ui) {
   ctx.strokeText(label, x, y + 9); ctx.fillStyle = s.shield ? '#7fe3ff' : '#e8e8e8'; ctx.fillText(label, x, y + 9);
   const bx = x + 90, bw = 38;
   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx, y + 2, bw, 8);
-  ctx.fillStyle = s.shield ? '#4fd0ff' : '#ffb347'; ctx.fillRect(bx + 1, y + 3, (bw - 2) * s.value / 100, 6);
+  ctx.fillStyle = s.shield ? '#4fd0ff' : '#ffb347'; ctx.fillRect(bx + 1, y + 3, (bw - 2) * Math.min(100, s.value) / 100, 6);
   ctx.restore();
 }
 

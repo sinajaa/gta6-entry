@@ -86,6 +86,7 @@ function ptsBetween(world, from, min, max) {
 
 function spot(world, from, min, max) {
   const p = pick(ptsBetween(world, from, min, max));
+  if (!p) return { x: world.width / 2, y: world.height / 2 }; // fallback kalau lanePoints kosong
   return { x: p.x, y: p.y };
 }
 

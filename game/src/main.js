@@ -31,7 +31,7 @@ if (!spawnSpot) throw new Error('spawn: tidak ada sisi mobil yang bebas');
 [player.x, player.y] = spawnSpot;
 const police = createPolice(world);
 const peds = createPeds(world, player.x, player.y, 120);
-const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5;
+const CRASH_SPEED_DROP = 50, CRASH_MIN_SPEED = 100, CRASH_COOLDOWN = 1.5, CRASH_DAMAGE_FACTOR = 0.2;
 let crashCooldown = 0;
 
 // Penyimpanan counter SAVE (money, missionsDone, carsStolen) — key suncity.save.
@@ -259,7 +259,7 @@ function frame(now) {
     updateDrivenCar(car, input, world, dt);
     if (speedBefore > CRASH_MIN_SPEED && speedBefore - Math.abs(car.speed) > CRASH_SPEED_DROP && crashCooldown === 0) {
       addHeat(world, 25, 'crash');
-      car.hp = Math.max(10, (car.hp ?? 100) - (speedBefore - Math.abs(car.speed)) * 0.2);
+      car.hp = Math.max(10, (car.hp ?? 100) - (speedBefore - Math.abs(car.speed)) * CRASH_DAMAGE_FACTOR);
       audio.crash((speedBefore - Math.abs(car.speed)) / 200);
       alarmPeds(peds, car.x, car.y, 300);
       crashCooldown = CRASH_COOLDOWN;

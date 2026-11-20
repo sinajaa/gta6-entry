@@ -103,6 +103,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     recoil: 0, kick: 0, _kickApplied: 0,
 
     setMouse(clientX, clientY, rect) {
+      if (!rect.width || !rect.height) return;
       const normX = (clientX - rect.left) / rect.width, normY = (clientY - rect.top) / rect.height;
       const cx = 0.5, cy = 0.5;
       const sens = c.sens != null ? c.sens : 1;
