@@ -48,4 +48,4 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
-console.log(`game "${meta.name}" | slug ${meta.slug} | build ${BUILD_VERSION} | output dir ${out}`);
+console.log(`building "${meta.name}" | slug ${meta.slug} | build ${BUILD_VERSION} | output dir ${out}`);

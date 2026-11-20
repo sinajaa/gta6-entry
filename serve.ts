@@ -66,6 +66,7 @@ createServer((request, response) => {
     'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     // Never cache so the latest game files are always served during development.
+    // no-cache: keep the browser from serving stale game files during development.
     'cache-control': 'no-store',
   });
   createReadStream(file).pipe(response);
