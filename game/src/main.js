@@ -20,6 +20,7 @@ import { createHeists, updateHeists } from './heist.js';
 import { createRaces, updateRaces } from './races.js';
 import { createEconomy, updateEconomy } from './economy.js';
 import { createStats, updateStats } from './stats.js';
+import { createTaxi, updateTaxi } from './taxi.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -71,10 +72,11 @@ const missions = createMissions(world, ui, audio);
 ui.link(world, missions, player);
 const heists = createHeists({ world, ui, audio, gfx, player });
 const races = createRaces({ world, ui, audio, gfx, player });
+const taxi = createTaxi({ world, ui, audio, gfx, player });
 const objectiveView = {
-  get markers() { return heists.active ? heists.markers : races.active ? races.markers : missions.markers; },
-  get target() { return heists.active ? heists.target : races.active ? races.target : missions.target; },
-  get objectiveText() { return heists.active ? heists.objectiveText : races.active ? races.objectiveText : missions.objectiveText; },
+  get markers() { return heists.active ? heists.markers : races.active ? races.markers : taxi.active ? taxi.markers : missions.markers; },
+  get target() { return heists.active ? heists.target : races.active ? races.target : taxi.active ? taxi.target : missions.target; },
+  get objectiveText() { return heists.active ? heists.objectiveText : races.active ? races.objectiveText : taxi.active ? taxi.objectiveText : missions.objectiveText; },
 };
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
@@ -218,6 +220,7 @@ addEventListener('keydown', (e) => {
     if (k === 'tab' && !e.repeat) { ui.toggleLog(); e.preventDefault(); return; }
     if (k === 'h' && !e.repeat) { if (heists.onKey()) { e.preventDefault(); return; } }
     if (k === 'k' && !e.repeat) { if (races.onKey()) { e.preventDefault(); return; } }
+    if (k === 't' && !e.repeat) { if (taxi.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }
   }
   // Navigasi mode foto (orbit + simpan).
@@ -318,6 +321,7 @@ function frame(now) {
   updateHeists(heists, dt, player);
   updateRaces(races, dt, player);
   updateEconomy(economy, dt, player);
+  updateTaxi(taxi, dt, player);
   combat.update(dt, keys, rawDt);
   updateStats(stats, dt, player);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
@@ -345,5 +349,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi };
 setInterval(persistSaveCounters, 20000);
