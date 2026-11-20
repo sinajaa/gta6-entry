@@ -1,7 +1,7 @@
 // ui.js — state MENU/PLAYING/PAUSED, HUD uang, toast, dan save/load localStorage
 // Menu, HUD, dan penyimpanan lokal ditulis sendiri untuk game ini.
 import { normalizeStanding } from './standing.js';
-import { T, COLS, ROWS, WORLD_W, WORLD_H, districtOfBlock } from './world.js';
+import { buildMapCanvas, drawFullMap } from './minimap.js';
 
 const SAVE_KEY = 'sunnycity.save.v1';
 const SETTINGS_KEY = 'sunnycity.settings.v1';
@@ -40,55 +40,7 @@ function loadSave() {
   } catch (e) { return null; }
 }
 
-const MAP_VIEW_W = 820, MAP_VIEW_H = 456;
-function districtFill(district) { return ['#5a7fa8', '#7a8a56', '#8a6b4f'][district] || '#666'; }
 let mapCache = null;
-function buildMapCanvas(world) {
-  const c = document.createElement('canvas');
-  c.width = MAP_VIEW_W; c.height = MAP_VIEW_H;
-  const ctx = c.getContext('2d');
-  const sx = MAP_VIEW_W / WORLD_W, sy = MAP_VIEW_H / WORLD_H;
-  // ocean / base underlay
-  ctx.fillStyle = '#1b3948';
-  ctx.fillRect(0, 0, MAP_VIEW_W, MAP_VIEW_H);
-  // districts as coloured blocks (10x10 tiles each)
-  const BLOCKS = COLS / 10;
-  const tileW = MAP_VIEW_W / COLS, tileH = MAP_VIEW_H / ROWS;
-  for (let by = 0; by < BLOCKS; by++) {
-    for (let bx = 0; bx < BLOCKS; bx++) {
-      ctx.fillStyle = districtFill(districtOfBlock(bx, by));
-      ctx.fillRect(bx * 10 * tileW, by * 10 * tileH, 10 * tileW, 10 * tileH);
-    }
-  }
-  // roads (tile type 0) — draw as dark strokes
-  ctx.fillStyle = '#2c2f36';
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      if (world.tiles[y * COLS + x] === T.ROAD) ctx.fillRect(x * tileW, y * tileH, tileW + 0.4, tileH + 0.4);
-    }
-  }
-  // parks
-  ctx.fillStyle = '#4f9a4f';
-  for (const p of world.parks) ctx.fillRect(p.x * sx, p.y * sy, p.w * sx, p.h * sy);
-  // district labels
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  const names = ['PUSAT', 'TENGAH', 'PINGGIR'];
-  const centers = [[0, 0], [0, 0], [0, 0]];
-  const counts = [0, 0, 0];
-  for (let by = 0; by < BLOCKS; by++) for (let bx = 0; bx < BLOCKS; bx++) {
-    const d = districtOfBlock(bx, by);
-    centers[d][0] += (bx + 0.5) * 10 * tileW; centers[d][1] += (by + 0.5) * 10 * tileH; counts[d]++;
-  }
-  names.forEach((n, d) => {
-    if (!counts[d]) return;
-    const cx = centers[d][0] / counts[d], cy = centers[d][1] / counts[d];
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(cx - 40, cy - 11, 80, 20);
-    ctx.fillStyle = '#fff'; ctx.fillText(n, cx, cy + 4);
-  });
-  return c;
-}
 
 export function createUI(hud) {
   const saved = loadSave();
@@ -246,7 +198,7 @@ export function createUI(hud) {
       if (!ctx) return;
       if (ui.state === 'PLAYING') { drawPlaying(ctx, ui); if (ui.logOpen) drawMissionLog(ctx, ui); }
       else if (ui.state === 'DEAD') drawDead(ctx, ui);
-      else if (ui.state === 'MAP') drawMap(ctx, ui);
+      else if (ui.state === 'MAP') drawFullMap(ctx, ui);
       else if (ui.state === 'PHOTO') drawPhotoHint(ctx, ui);
       else drawOverlay(ctx, ui);
     },
@@ -482,58 +434,6 @@ function drawPauseStats(ctx, ui) {
     ctx.font = '14px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#bbb'; ctx.fillText(label, x + 12, ry);
     ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.fillText(String(val), x + w - 12, ry);
   });
-  ctx.restore();
-}
-
-function drawMap(ctx, ui) {
-  ctx.save();
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#08141c'; ctx.fillRect(0, 0, W, H);
-  const cw = MAP_VIEW_W, ch = MAP_VIEW_H;
-  const ox = (W - cw) / 2, oy = 64;
-  if (!ui.world || !ui.mapCanvas) {
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('PETA TIDAK TERSEDIA', W / 2, H / 2);
-    ctx.restore(); return;
-  }
-  ctx.drawImage(ui.mapCanvas, ox, oy, cw, ch);
-  // player arrow
-  const p = ui.player && (ui.player.car || ui.player);
-  if (p) {
-    const sx = cw / WORLD_W, sy = ch / WORLD_H;
-    const px = ox + p.x * sx, py = oy + p.y * sy;
-    const angle = ui.player && ui.player.car ? ui.player.car.angle : (p.facing || 0);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(angle);
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-7, 7); ctx.lineTo(-3, 0); ctx.lineTo(-7, -7); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-  // mission markers
-  if (ui.missions && ui.missions.markers) {
-    const sx = cw / WORLD_W, sy = ch / WORLD_H;
-    for (const m of ui.missions.markers) {
-      const mx = ox + m.x * sx, my = oy + m.y * sy;
-      ctx.fillStyle = '#ffd21f'; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(mx, my, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
-  }
-  // title bar
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffb347'; ctx.font = 'bold 28px sans-serif';
-  ctx.fillText('PETA SUNNY CITY', W / 2, 40);
-  ctx.fillStyle = '#ccc'; ctx.font = '14px sans-serif';
-  ctx.fillText('M / ESC / Enter — tutup peta', W / 2, 54);
-  // legend
-  ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
-  let lx = ox, ly = oy + ch + 22;
-  ctx.fillStyle = '#ffd21f'; ctx.fillRect(lx, ly - 9, 10, 10); ctx.fillStyle = '#ddd'; ctx.fillText('penanda misi', lx + 16, ly);
-  const labelW = ctx.measureText('penanda misi').width + 16;
-  lx += labelW + 24;
-  ctx.fillStyle = '#fff'; ctx.fillRect(lx, ly - 6, 10, 10); ctx.fillStyle = '#ddd'; ctx.fillText('posisi kamu', lx + 16, ly);
   ctx.restore();
 }
 
