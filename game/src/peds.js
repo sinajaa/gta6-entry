@@ -132,12 +132,14 @@ export function updatePeds(world, player, peds, dt) {
   const carSpeed = player.car ? Math.abs(player.car.speed) : 0;
   let near = 0, far = null, farD = -1;
   for (const p of peds) {
+    if (p.gang != null) continue; // musuh geng dikelola gangs.js, bukan pejalan kaki
     const d = Math.hypot(p.x - focus.x, p.y - focus.y);
     if (d <= NEAR_RADIUS) near++;
     else if (d > farD) { farD = d; far = p; }
   }
   if (near < NEAR_MIN && far) placeNear(world, far, focus.x, focus.y, REFILL_MIN, REFILL_MAX);
   for (const p of peds) {
+    if (p.gang != null) continue; // musuh geng dikelola gangs.js, bukan pejalan kaki
     const d = Math.hypot(p.x - focus.x, p.y - focus.y);
     if (d > PED_ACTIVE_RADIUS) { placeNear(world, p, focus.x, focus.y, RECYCLE_MIN, RECYCLE_MAX); continue; }
     if (p.state !== 'PANIC' && carSpeed > SCARE_CAR_SPEED && d < SCARE_CAR_DIST) startPanic(p, focus.x, focus.y);

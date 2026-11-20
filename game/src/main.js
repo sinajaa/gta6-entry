@@ -24,6 +24,7 @@ import { createTaxi, updateTaxi } from './taxi.js';
 import { createPhoto, updatePhoto } from './photo.js';
 import { createRadio, updateRadio } from './radio.js';
 import { createMechanic, updateMechanic } from './mechanic.js';
+import { createGangs, updateGangs } from './gangs.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -85,6 +86,7 @@ const objectiveView = {
 };
 const SIREN_RANGE = 600;
 const combat = createCombat({ gfx, world, player, police, peds, ui, missions, audio });
+const gangs = createGangs({ world, ui, audio, combat, peds, gfx });
 const shot = createShot({ world, player, police, peds, gfx, combat, keys, ui });
 const extras = createExtras({ world, player, ui, audio, gfx });
 const interiors = createInteriors({ world, player, ui, gfx, combat });
@@ -147,11 +149,15 @@ addEventListener('pointerdown', (e) => {
   if (ui.click() === 'start') startGame();
   else if (e.button === 0 && ui.state === 'PLAYING') {
     if (ui.logOpen) { ui.logClick(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight); return; }
+    if (gangs.open) { gangs.pointerBlock(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight); return; }
     if (!touchTarget(e)) combat.mouseDown = true;
   }
 });
 addEventListener('pointerup', (e) => { if (!touchTarget(e)) combat.mouseDown = false; });
-addEventListener('pointermove', (e) => { if (!touchTarget(e)) combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect()); });
+addEventListener('pointermove', (e) => {
+  if (gangs.open) { gangs.pointerBlock(e.clientX * 960 / innerWidth, e.clientY * 540 / innerHeight); return; }
+  if (!touchTarget(e)) combat.setMouse(e.clientX, e.clientY, canvas.getBoundingClientRect());
+});
 addEventListener('beforeunload', () => { ui.save(); persistSaveCounters(); });
 
 function enterExit() {
@@ -237,6 +243,7 @@ addEventListener('keydown', (e) => {
     if (k === 'k' && !e.repeat) { if (races.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { if (taxi.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }
+    if (k === 'j' && !e.repeat) { if (gangs.onKey && gangs.onKey('j')) { e.preventDefault(); return; } }
   }
   pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
@@ -326,6 +333,7 @@ function frame(now) {
   updateRadio(radio, dt, player);
   combat.update(dt, keys, rawDt);
   updateStats(stats, dt, player);
+  updateGangs(gangs, dt, player);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
   if (shot) shot.camera(gfx.camera);
   const blending = menuCam && menuCam.phase === 'blend';
@@ -344,6 +352,7 @@ function frame(now) {
   ui.wanted = police.stars;
   ui.update(0);
   economy.drawMenu();
+  if (gangs.open && gangs.ctx) gangs.drawPanel();
   requestAnimationFrame(frame);
 }
 if (new URLSearchParams(location.search).has('shot')) {
@@ -351,5 +360,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio, mechanic, gangs };
 setInterval(persistSaveCounters, 20000);
