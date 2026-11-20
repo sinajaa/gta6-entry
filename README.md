@@ -1,5 +1,9 @@
 # SUNNY CITY
 
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/sinajaa/gta6-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+
 A 3D open-world crime game that runs offline in your browser, built with three.js.
 
 ## Features
@@ -75,3 +79,5 @@ Rendered screenshots live in `screenshots/`.
 - The six side jobs (heist, taxi, stunt, bounty, pizza, repo) start from the mission log (`Tab`); checkpoint respawn restores the last objective from `m.checkpoint` on `fail()`.
 - Key bindings: `M` map, `Tab` mission log, `P` photo mode, `Esc` pause, `F` aim/filter-cycle in photo mode, `Enter` start/save screenshot, `G` reload, `R` radio, `E` enter/use, `Q` (hold) weapon wheel, `1-5` weapon select.
 - Settings persist to `localStorage` under `sunnycity.settings.v1`; the four `?shot=` scenes in `shots.json` are `1-street.jpg`, `2-chase.jpg`, `3-firefight.jpg`, `4-driving.jpg`, each using `seed=1`.
+
+Bounty: https://make.fun/bounty/gta6-01
