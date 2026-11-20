@@ -22,6 +22,7 @@ import { createEconomy, updateEconomy } from './economy.js';
 import { createStats, updateStats } from './stats.js';
 import { createTaxi, updateTaxi } from './taxi.js';
 import { createPhoto, updatePhoto } from './photo.js';
+import { createRadio, updateRadio } from './radio.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -74,6 +75,7 @@ ui.link(world, missions, player);
 const heists = createHeists({ world, ui, audio, gfx, player });
 const races = createRaces({ world, ui, audio, gfx, player });
 const taxi = createTaxi({ world, ui, audio, gfx, player });
+const radio = createRadio({ ui, audio, gfx });
 const objectiveView = {
   get markers() { return heists.active ? heists.markers : races.active ? races.markers : taxi.active ? taxi.markers : missions.markers; },
   get target() { return heists.active ? heists.target : races.active ? races.target : taxi.active ? taxi.target : missions.target; },
@@ -194,7 +196,7 @@ if (touch.isTouch) {
 
 function setRadioKey() {
   const on = !!player.car && ui.state === 'PLAYING';
-  audio.setRadio(on);
+  radio.setCar(on);
 }
 
 function saveScreenshot() {
@@ -216,7 +218,10 @@ addEventListener('keydown', (e) => {
     if (k === 'e' || k === 'enter') { if (!e.repeat) economy.confirm(); e.preventDefault(); return; }
   }
   if (k === 'r' && !e.repeat && ui.state === 'PLAYING' && player.car) {
-    ui.station = audio.nextStation(); ui.stationT = 2.5; setRadioKey();
+    radio.next();
+  }
+  if (k === '[' && !e.repeat && ui.state === 'PLAYING' && player.car) {
+    radio.prev();
   }
   // Buka/tutup peta dan mode foto, log misi.
   if (ui.state === 'PLAYING') {
@@ -312,6 +317,7 @@ function frame(now) {
   updateRaces(races, dt, player);
   updateEconomy(economy, dt, player);
   updateTaxi(taxi, dt, player);
+  updateRadio(radio, dt, player);
   combat.update(dt, keys, rawDt);
   updateStats(stats, dt, player);
   if (!interiors.active) updateCamera3D(gfx.camera, player.car || player, player.car ? 'drive' : 'walk', dt, world);
@@ -339,5 +345,5 @@ if (new URLSearchParams(location.search).has('shot')) {
   try { startGame(); } catch (err) { console.warn('shot autostart audio:', err); if (!missions.active) missions.next(); }
 }
 requestAnimationFrame(frame);
-window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi };
+window.__game = { interiors, combat, ui, audio, world, player, police, peds, missions, keys, gfx, cars: world.cars, heists, races, economy, stats, taxi, radio };
 setInterval(persistSaveCounters, 20000);
