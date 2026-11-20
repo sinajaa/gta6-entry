@@ -4,9 +4,12 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TILE, T, tileAt, WORLD_W, WORLD_H } from './world.js';
 import { hasLineOfSight, addHeat } from './police.js';
 import { alarmPeds } from './peds.js';
-
-export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48, SHELL_MAX = 40, DEBRIS_MAX = 48, SMOKE_MAX = 64, FIREBALL_MAX = 6;
 import { WEAPONS, WEAPON_ORDER, createAmmo, createMags, refill, createPickups, updatePickups } from './weapons.js';
+
+// ------------------------------------------------------------- efek & pool
+export const TRACER_MAX = 32, FLASH_MAX = 8, SPARK_MAX = 48, SHELL_MAX = 40, DEBRIS_MAX = 48, SMOKE_MAX = 64, FIREBALL_MAX = 6;
+
+// ------------------------------------------------------------- konstanta terukur
 const RANGE = 600, PED_RADIUS = 14, CAR_HALF_L = 28, CAR_HALF_W = 11, DRIVEBY_SPREAD = 0.10;
 const CAR_HP = 100, PED_HP = 50;
 const MAX_HEALTH = 100, REGEN_DELAY = 6, REGEN_RATE = 2;
@@ -18,6 +21,7 @@ const COP_DAMAGE = 6, HELI_DAMAGE = 4, HELI_INTERVAL = 0.5, COP_CAR_FACTOR = 0.5
 const PLAYER_COLOR = [1, 0.85, 0.45], COP_COLOR = [1, 0.3, 0.12];
 const SHAKE_TIME_EXPL = 0.5, SHAKE_MAG_EXPL = 14, EXPL_RADIUS = 200, MUZZLE_H = 13;
 
+// ------------------------------------------------------------- geometri tembak
 function wallDistance(world, ox, oy, dx, dy, range) {
   let tx = Math.floor(ox / TILE), ty = Math.floor(oy / TILE);
   const sx = Math.sign(dx), sy = Math.sign(dy);
@@ -58,6 +62,7 @@ function rayCircle(px, py, r, ox, oy, dx, dy) {
   return t >= 0 ? t : (along >= 0 ? 0 : null);
 }
 
+// ------------------------------------------------------------- pool partikel
 const AIM_MAX = 600;
 function makePool(n, make) { return Array.from({ length: n }, make); }
 
@@ -220,6 +225,8 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
   };
 
   let prevKeys = new Set();
+
+  // ------------------------------------------------------------- ambil ammo
   function updateAmmoPickups(dt) {
     const focus = player.car || player;
     updatePickups(c.pickups, world, focus, dt, () => { refill(c.ammo); ui.toast('AMMO +'); });
@@ -243,6 +250,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     }
   }
 
+  // ------------------------------------------------------------- spawning efek
   function addTracer(x0, y0, z0, x1, y1, z1, w, color, life, dim = 1) {
     const t = c.tracers[c.tracerCursor++ % TRACER_MAX];
     Object.assign(t, { t: life, max: life, x0, y0, z0, x1, y1, z1, w, color, dim });
@@ -298,6 +306,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     addHeat(world, 20, 'explosion');
   }
 
+  // ------------------------------------------------------------- simulasi efek
   function tickFx(dt) {
     for (const t of c.tracers) if (t.t > 0) t.t -= dt;
     for (const f of c.flashes) if (f.t > 0) f.t -= dt;
@@ -372,6 +381,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     Object.assign(c.hit, { t: HIT_TIME, kill, x: c.mouse.x, y: c.mouse.y });
   }
 
+  // ------------------------------------------------------------- kerusakan target
   function damage(hit, dmg) {
     const target = hit.target;
     if (hit.kind === 'car') {
@@ -405,6 +415,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     }
   }
 
+  // ------------------------------------------------------------- menembak
   function fire() {
     const w = WEAPONS[c.weapon];
     const magGun = w.mag != null;
@@ -504,6 +515,7 @@ export function createCombat({ gfx, world, player, police, peds, ui, missions, a
     return Math.abs(proj.x) <= 1 && Math.abs(proj.y) <= 1 && proj.z < 1;
   }
 
+  // ------------------------------------------------------------- polisi menembak
   function updateCops(dt) {
     const stars = police.stars;
     const target = player.car || player;
