@@ -65,3 +65,13 @@ Rendered screenshots live in `screenshots/`.
 - `game/src/*.js` — world, render, vehicle, police, missions, combat, interiors, extras, UI, audio.
 - `screenshots/` — exported screenshot scenes.
 - `shots.json` — the `?shot=...` scene list.
+
+## Build notes
+
+- The game is 7,786 lines of source across 18 modules under `game/src/`, with `render3d.js` the largest at 2,777 lines; `main.ts` packs `game/` and `screenshots/` into `out/` via `MAKEFUN_OUTPUT_DIR=out node main.ts`.
+- Five weapons are defined in `weapons.js` (`WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'compactsmg']`); the compact SMG carries a 32-round mag, reloads on `G` or automatically, and fires with `damage: 14`, `cooldown: 0.085`, `spread: 0.07`.
+- The world is a procedural 80×80 tile grid (`COLS`/`ROWS` in `world.js`) with tiles `T = { ROAD: 0, SIDEWALK: 1, GRASS: 2, BUILDING: 3 }` and three districts (pusat/tengah/pinggir) resolved by `districtOfBlock`.
+- Traffic lights alternate green axes every `PHASE_SECONDS = 6` (`vehicle.js`); NPC cars hold their lane, brake for red, and queue via `blockedByCar`.
+- The six side jobs (heist, taxi, stunt, bounty, pizza, repo) start from the mission log (`Tab`); checkpoint respawn restores the last objective from `m.checkpoint` on `fail()`.
+- Key bindings: `M` map, `Tab` mission log, `P` photo mode, `Esc` pause, `F` aim/filter-cycle in photo mode, `Enter` start/save screenshot, `G` reload, `R` radio, `E` enter/use, `Q` (hold) weapon wheel, `1-5` weapon select.
+- Settings persist to `localStorage` under `sunnycity.settings.v1`; the four `?shot=` scenes in `shots.json` are `1-street.jpg`, `2-chase.jpg`, `3-firefight.jpg`, `4-driving.jpg`, each using `seed=1`.

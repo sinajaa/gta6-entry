@@ -42,3 +42,13 @@ Location: `police.js` — `assignRoles`, `blockAhead`, `pitManeuver`, `updateSpi
 ### Coordination flow
 
 `updatePolice` (called from `main.js` each frame) assigns roles before the cop loop, then routes each cop to `pitManeuver`, `blockAhead` or the existing `chase` logic; `updateSpikes`, the helicopter and roadblock continue to run alongside. No controls or mission scripts were changed.
+
+## Build notes
+
+- Traffic-light timing is `PHASE_SECONDS = 6` (defined at the top of `vehicle.js` with `ROAD_PERIOD = 10 * TILE`); `mustStopAtLight` computes `greenAxis = Math.floor(time / PHASE_SECONDS) % 2` to alternate the horizontal/vertical axes.
+- Pedestrian tuning lives in `peds.js`: `WALK_SPEED = 55`, `PANIC_SPEED = 160`, `PANIC_TIME = 4`, `COWER_TIME = 2` (all units/sec and seconds), with `findCrossing` walking a ray from a road tile to the far sidewalk.
+- Foot patrols are constants in `police.js` (`FOOT_WALK = 2`, `FOOT_RUN = 95`, `FOOT_ARRIVE = 150`); `updateOfficers` moves the two `state.officers` along the downtown loop and only switches them to running while wanted.
+- Spike-strip placement in `updateSpikes` checks `ground === T.ROAD || ground === T.SIDEWALK` and keeps a `SPIKE_CLEAR` separation so strips never stack; a hit writes `car.flatT` that `vehicle.js` `updateDrivenCar` reads to drop top speed and wobble steering.
+- Role assignment (`assignRoles`) picks `BLOCK` from the cop with the largest forward projection and `PIT` from the one deepest behind, both refreshed every frame before the cop loop.
+- `alarmPeds` is wired from two call sites — `combat.js` on every player shot and `main.js` on vehicle collisions — so both gunfire and crashes push nearby peds into `PANIC`.
+- Module line counts at this checkpoint: `vehicle.js` 208, `peds.js` 200, `police.js` 437, `render3d.js` 2777.

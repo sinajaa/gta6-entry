@@ -81,3 +81,13 @@ A steal-and-return side job that reuses the garage location:
 - `game/src/ui.js` — `logIdx`, `logSelect`, `logStartSelected`, `logClick`, log-open key handling, and the rewrite of `drawMissionLog` to select/start side jobs.
 - `game/src/main.js` — pointer-down routing to `ui.logClick` when the log is open.
 - District job reputation: `standing.js` `job()` counts finished jobs per district; at 3 it pays +$50 per job (call in `missions.js finish()`) and `repairPrice` gives 20% off garage repair (`extras.js`).
+
+## Build notes
+
+- All logic is in `game/src/missions.js` (591 lines); the six side jobs are appended to `MISSION_LIST` with `kind: 'side'` so the story cursor (`MISSION_LIST.indexOf(...) + 1 % length`) never reaches them.
+- Side-job rewards/l​imits as declared in `MISSION_LIST`: heist `reward: 1200, limit: 240`, taxi `400/90`, stunt `900/120`, bounty `1000/90`, pizza `250/180`, repo `1500/180`.
+- The heist runs two 20-second waves (`waveDuration = 20s`) with a `pulse` timer re-heating the wanted level; stage 2 spawns a safe-point marker `350–650` units away.
+- The stunt job scores air time up to 100 points (`air * 80` capped) plus `+40` for a clean landing (speed `>40` and `<260`); it requires entering the ramp within `34` units while travelling faster than `140` units/sec.
+- The bounty target spawns `260–380` units ahead with `hp = 150`, runs at `240` units/sec via `driveLane`; tailing within `30` units drains `40 hp/s`, ramming at `>150` units/sec drains `80 hp/s`, and a `2.5s` hold finishes it.
+- Checkpoint respawn stores `stage` plus per-mission fields (`dest`, `pickup`, `points`, and heist `wave`/`waveT`/`waveDuration`) into `m.checkpoint` on `fail()`, restored in `start()` when the id matches, and cleared on `finish()`.
+- Mission-log selection lives in `game/src/ui.js` (`logIdx`, `logSelect`, `logStartSelected`, `logClick`); side rows render cyan `#7fd6ff` with the hint "SIDE JOB — Enter untuk mulai", and `main.js` routes pointer-down to `ui.logClick` while the log is open.

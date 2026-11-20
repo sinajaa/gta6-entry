@@ -94,3 +94,14 @@ a distant squad-car cry drift up through the city bed without ever stomping on t
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The audio has no headless unit
 tests; it is exercised in-browser alongside the renderer.
+
+## Build notes
+
+- The whole system lives in one file, `game/src/audio.js` (531 lines), with no external audio assets — every voice is synthesized from oscillators and noise buffers at runtime.
+- The adaptive music director picks per-district pitch tables from `MUSIC_ROOTS = [[38, 41, 43], [33, 36, 38], [31, 34, 36]]` (MIDI notes for pusat/tengah/pinggir) and `MUSIC_CHORDS`, one row per district.
+- Engine pitch maps speed to `45 → 175 Hz` via `setDrive`, with a `setTargetAtTime` ramp so enter/exit fades smoothly; the tyre voice sweeps a bandpass centre `700 → 2100 Hz`.
+- Per-gun profiles are keyed in a `GUNS` map; `shot('pistol'|'smg'|'shotgun'|'rifle'|'cop')` drives the noise burst, sine body thump, and a shared feedback-delay reverb tail.
+- The low-fuel warning reads `car.nitroFuel` against `FUEL_LOW = 0.15`, emitting a doubled square-wave beep at `880 / 920 Hz` followed by a ~0.9 s pause (`setFuel` mirrors the value each frame).
+- The distant siren loop is two detuned sines at `440 / 660 Hz` on a 900 ms cadence; its gain crossfades in with `ctx.heat`, reaching full at heat 4 via `setTargetAtTime`.
+- `update({car, heat, district, water})` is called from `main.js` each frame; `districtAt` is imported there to feed the director, and `water` proximity (edge distance) gates the gull-call bus.
+- Radio stations `NEON WAVE 101.3`, `FUNKY TOWN 94.7`, `LOFI BAY 88.1` keep the same `setRadio`/`nextStation`/`stationName` interface, switched with `R` in-car.

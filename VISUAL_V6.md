@@ -38,3 +38,14 @@ Street furniture (`treeMesh`, `boxMesh`, `cylMesh`, `signMesh`) was previously `
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0; `node --check` passes on `game/src/render3d.js` and `game/src/main.js`. The four `?shot=` scenes are street/chase/firefight/driving daytime shots, all well within the cull radius and unaffected by the bloom/glass changes; the renderer remains a live WebGL scene with no headless unit tests, so runtime visuals are exercised in-browser.
 - Street lamps: additive warm glow sprites at night (opacity 0.35*night) and faint wet-road reflection streaks under lamps after rain (scaled by `gfx.wetAmount`); luminance verified 103/121/118/115.
+
+## Build notes
+
+- The ground AO is baked in `makeGroundTexture` as two nested dark strips (`rgba(0,0,0,0.06)` / `0.03`, previously `0.14`/`0.06`) just outside each building footprint — zero per-frame cost.
+- Contact-AO under cars uses `blobMesh` (now also on the hardware renderer) with opacity `0.12` (software keeps `0.35`), and `syncActors` writes one dark ellipse per car/player each frame; static prop blobs are skipped via `gfx.blobStatic = 0`.
+- Car paint `metalness` dropped from `0.7` to `0.1` (a metallic surface with no env map read as near-black); the fresnel sheen now comes from `clearcoat: 1.0`.
+- God rays are added in `compositeFrag` (marches toward the screen-space sun) and steered by `updateGodRays`, which projects `SUN_DIR`/`skySunDir` to set `uSun`, tints with `gfx.sun.color`, and fades to zero at night.
+- `buildCarGeometry` now returns `{ paint, glass }`; glass uses its own `makeGlassMaterial` shader (`glassVert`/`glassFrag`) reflecting the day/night sky gradient, replacing the flat `#a9d6f2` tint.
+- The quality gate in `applySettings` (`main.js`) drops both bloom and shadow maps at **low**, runs both at **medium/high**, and `renderFrame` skips `renderBloom` when `gfx.bloomEnabled` is false.
+- Prop culling: `buildProps`/`buildPropSet` records each instance's matrix and world position; `cullProps` collapses instances beyond `CULL_RADIUS = 1050` to a near-zero matrix (no buffer re-indexing), restoring them on camera return.
+- Ground/road tile colours are the `GROUND_COLORS` map: `T.ROAD #565b60`, `T.SIDEWALK #d9d2c3`, `T.GRASS #8fc16a`, `T.BUILDING #8c8173`.

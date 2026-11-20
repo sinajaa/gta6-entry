@@ -46,3 +46,14 @@ No mission scripts or control bindings were changed.
 ## Verification
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. Combat and vehicle visuals are exercised in-browser; the renderer is a live WebGL scene and has no headless unit tests.
+
+## Build notes
+
+- Weapon stats are defined in `game/src/weapons.js` (`WEAPONS` map) with `WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'compactsmg']`; the compact SMG carries `mag: 32`, `reloadMs: 1.5`, and a cool-blue `flash: [0.45, 0.85, 1.0]`.
+- The compact SMG has `damage: 14`, `cooldown: 0.085`, `spread: 0.07`, `range: 440`, `maxAmmo: 192`, `startAmmo: 64`, `pack: 32` — fires faster and spreads more than the pistol (`damage: 25`, `spread: 0.01`).
+- Per-weapon `recoil` and `kick` are columns in `WEAPONS` (e.g. pistol `recoil: 0.012, kick: 0.14`; shotgun `recoil: 0.04, kick: 0.5`); `combat.js` applies kick as a camera pitch impulse and recoil as decaying aim drift.
+- The reload is keyed to `G` (or fires automatically when the mag runs dry); ammo pickups spawn from `updatePickups` with `PICKUP.max = 5`, `radius = 30`, `interval = 6`, and a spawn distance band of `minDist: 120` / `maxDist: 520`.
+- Vehicle damage thresholds: below 50% hp `combat.js` emits smoke puffs, and at 0 hp `explodeCar` runs the two-stage fireball plus debris/smoke/spark/shockwave; a distance-scaled `explShake` shakes the camera.
+- Killed pedestrians enter a `DOWN` state in `peds.js` (knocked back and folded flat) instead of teleporting away, then are recycled off-screen.
+- The muzzle flash now spawns at the correct height (on-foot vs. drive-by) and drives the pooled point lights; tracers stay color-matched (player warm-white, cop red).
+- Modules touched: `weapons.js` (53 lines), `combat.js` (593), `peds.js` (200), `render3d.js` (2777).

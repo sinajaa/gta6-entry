@@ -57,3 +57,14 @@ The game world is frozen while in any of these screens, so the orbit camera rend
 
 - Photo mode: **F** cycles NORMAL / NOIR / WARM / COOL (HUD-canvas tint + vignette, so the filter is not baked into the saved PNG).
 - Minimap legend row (kamu / polisi / misi) under the minimap; pause menu has a STATISTIK block (drift best, collectibles, side jobs) — drift best and side jobs persist in the save.
+
+## Build notes
+
+- The map screen (`M`) is drawn in `game/src/ui.js`; `buildMapCanvas` pre-renders the background once to an offscreen canvas, so only the white player arrow and yellow mission markers are redrawn live each frame.
+- District blocks are colour-coded from `districtOfBlock` in `world.js`, with labels `PUSAT` / `TENGAH` / `PINGGIR` (the `names` array in `ui.js`), over a dark road grid sampled from `world.tiles` and green patches from `world.parks`.
+- Settings persist to `localStorage` under the key `sunnycity.settings.v1`, exposing four options: render quality (RENDAH/SEDANG/TINGGI), shadows, mouse sensitivity, and master volume (via a new `audio.setVolume`).
+- Mouse sensitivity drives `combat.sens`, which scales pointer movement from screen centre; quality changes are applied live through `ui.onSettings`.
+- Photo mode (`P`) hides the HUD/minimap and orbits the camera; `F` cycles the tint filters NORMAL/NOIR/WARM/COOL (HUD-canvas only, not baked into the saved PNG), and `Enter` writes the WebGL canvas as a PNG.
+- The pause menu (`Esc`) navigates with up/down arrows and `Enter`, offering Resume / Settings / Save / Quit; the mission log (`Tab`) lists `MISSION_LIST` with active rows highlighted yellow and completed green.
+- Touch support in `game/src/touch.js` adds a visible dead-zone ring, enlarged stick/button hit areas, a dedicated **REM** (handbrake) button, a persistent **LARI** (sprint) toggle, and haptic `navigator.vibrate` on press.
+- `game/index.html` carries the touch-control markup/CSS; key routing for `M`/`Tab`/`P` and the photo orbit live in `game/src/main.js` (318 lines).

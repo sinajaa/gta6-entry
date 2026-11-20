@@ -68,3 +68,14 @@ Peds occasionally pause near shop fronts to check a phone (`PHONE`) or sit on a 
 ## Verification
 
 `MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.- Interiors: added a 5th enterable interior, LAUNDROMAT (washers, counter, neon sign), registered in KINDS/SPOTS/furnish like the diner.
+
+## Build notes
+
+- The entire waterfront seam lives in `buildWaterfront` inside `game/src/render3d.js`, using merged/instanced geometry for roughly eight draw calls: ocean plane, beach ring, one `InstancedMesh` each for palms/umbrellas/lamps/boats, and `mergeColored` meshes for pier and dock.
+- The ocean is a `ShaderMaterial` plane of `OCEAN_SIZE = 6800` (96×96 segments) at `y = -4`, displaced by three summed sine waves with an analytic normal; `syncOcean` updates `uTime`, sun/moon direction, and night amount each frame from `renderFrame`.
+- Beach props are instanced counts: **54** palms, **16** parasols tinted from `UMBRELLA_COLORS = ['#ff3b6b', '#18c8ff', '#ffd23a', '#9b5cff', '#2ee06a']`, and six boats moored at the marina.
+- The player slows to swim pace when near water: `SWIM = 70`, `WATER_EDGE = 260` in `game/src/player.js` (vs. walk `WALK = 150`, sprint `SPRINT = 260`, `STAMINA_MAX = 100`).
+- Enterable interiors are registered in `game/src/interiors.js` (236 lines) with shared `KINDS`/`SPOTS`/`furnish` logic and constants `HALF_W = 120`, `HALF_D = 90`, `WALL_H = 44`, `DOOR_RANGE = 30`; the five interiors are restaurant, gun shop, bank, diner, and laundromat.
+- The cinematic flyover after the title screen is skippable with any key (`game/src/camera.js`, 190 lines); six hidden gold tokens pay cash on touch and report a `TOKEN n/6` HUD counter (`game/src/extras.js`).
+- Pedestrians add two idle states in `peds.js`: `PHONE` (pauses near shop fronts) and `SIT` (bench in a park), both returning to walk after a timer.
+- Drift scoring lives in `vehicle.js`/`combat.js`: handbrake or full-lock at speed slides the car, emits rear-tire smoke, and pays a small cash bonus when the chain decays to grip.
