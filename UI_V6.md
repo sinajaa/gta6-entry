@@ -1,70 +1,43 @@
-# UI_V6 — Interface features
+# UI_V6 — Interface layer & screens
 
-This pass adds the game's missing interface layer on top of the existing HUD, without touching the mission scripts (`missions.js`) or the story content. The HUD drawing and the save/load flow are preserved as-is.
+`game/src/ui.js` provides the full interface on top of the HUD: map, pause menu, settings, mission log, photo-mode hint, weapon/ammo readout, hit marker, minimap legend, standing bar, garage menu, and the toast system, all drawn to a 960×540 HUD canvas. It does not touch mission or story logic.
 
 ## Map screen (`M`)
 
-A full-screen map is drawn on the HUD canvas. Press **M** while playing to open it; **M**, **Esc** or **Enter** closes it.
+A full-screen map (`openMap`/`closeMap`) draws the three districts (PUSAT / TENGAH / PINGGIR) as colour-coded blocks, dark roads sampled from `world.tiles`, green parks from `world.parks`, a white player arrow rotated to facing, and yellow mission markers from `missions.markers`. The background is pre-rendered once into `buildMapCanvas` and blitted each frame; only the arrow and markers redraw live.
 
-- **Districts** — the three districts (`PUSAT`, `TENGAH`, `PINGGIR`) are colour-coded blocks with centred labels, derived from `districtOfBlock` in `world.js`.
-- **Roads** — road tiles are drawn as a dark grid over the district fill, sampled straight from `world.tiles`.
-- **Parks** — green patches from `world.parks`.
-- **Player arrow** — a white arrow at the player's position, rotated to the player's facing (or the car's heading).
-- **Mission markers** — the active mission's markers (`missions.markers`) are shown as yellow dots.
+## Pause menu & settings (`Esc`)
 
-The map background is pre-rendered once into an offscreen canvas (`buildMapCanvas`) and blitted each frame, so only the arrow and markers are redrawn live.
-
-## Pause menu
-
-Press **Esc** to open the pause menu: **Resume**, **Settings**, **Save** and **Quit**. Navigate with the up/down arrows and confirm with **Enter**. `Quit` returns to the title screen.
-
-## Settings
-
-The **Settings** submenu (arrow keys to pick a row, left/right to change) exposes four options, persisted to `localStorage` under `sunnycity.settings.v1`:
-
-- **Render quality** — `RENDAH` / `SEDANG` / `TINGGI`, applied to the renderer pixel ratio.
-- **Shadows** — toggles `renderer.shadowMap.enabled`.
-- **Mouse sensitivity** — scales `combat.sens`, which the aim code uses to scale pointer movement from screen centre.
-- **Master volume** — drives a new `audio.setVolume` on the WebAudio master gain.
-
-Changes are applied live through `ui.onSettings` and saved immediately.
+`Esc` opens Resume / Settings / Save / Quit, navigated with arrows and confirmed with `Enter`. `Quit` returns to the title screen. Settings exposes four persisted options (`sunnycity.settings.v1`): render quality (RENDAH/SEDANG/TINGGI → pixel ratio and pass gating), shadows, mouse sensitivity (`combat.sens`), and master volume (`audio.setVolume`). Changes apply live through `ui.onSettings` → `applySettings` in `main.js`.
 
 ## Mission log (`Tab`)
 
-**Tab** toggles an overlay listing the eight missions (`MISSION_LIST`) with their state: active (highlighted yellow), completed (green, with the giver's name), or not-yet-reached (grey). It does not pause the game.
+`Tab` toggles an overlay listing `MISSION_LIST` with active rows highlighted yellow, completed green, and the rest grey. It does not pause, and doubles as the side-job launcher (see the mission selection entries in `logSelect`/`logStartSelected`/`logClick`).
 
-## Photo mode (`P`)
+## Photo-mode hint & filters (`P`)
 
-Press **P** to enter photo mode:
+`ui.openPhoto` freezes the world; while active the HUD (and minimap) hides and the camera orbits. `F` cycles filter presets NORMAL / NOIR / WARM / COOL (HUD-canvas tint + vignette only, not baked into the saved PNG), and Enter saves the WebGL canvas.
 
-- The HUD (including the minimap) is hidden.
-- The camera orbits the player; **arrow keys** rotate yaw and change pitch/height.
-- **Enter** saves the WebGL canvas as a PNG — a small "SCREENSHOT DISIMPAN" toast confirms it.
-- **P** or **Esc** returns to the game.
+## HUD state
 
-The game world is frozen while in any of these screens, so the orbit camera renders the last live scene.
+`drawPlaying` renders money, the package/collectible counter, toasts, the central prompt, the station banner, and then `drawWeapon` (name + `[slot]` + mag/reserve), the hit marker, the weapon wheel (`Q`), minimap legend, standing bar with heat shield, and the garage menu. `drawDead` renders the WASTED/BUSTED splash. `drawOverlay` handles menu and pause screens, including a STATISTIK block (drift best, collectibles, side jobs) in the pause overlay.
 
-## Files changed
+## Save/load
 
-- `game/src/ui.js` — map, pause menu, settings, mission log, photo hint; settings load/save; new `MAP` / `PHOTO` states.
-- `game/src/main.js` — key routing for `M` / `Tab` / `P`, photo-mode camera orbit and screenshot, `applySettings` wiring.
-- `game/src/audio.js` — added `setVolume`.
-- `game/src/combat.js` — added `sens` and centre-scaled mouse mapping.
-- `game/src/touch.js` — bigger stick/button hit areas with a visible dead-zone ring, a dedicated **REM** (handbrake) button, a persistent **LARI** (sprint) toggle, and haptic vibration on press (`navigator.vibrate`).
-- `game/index.html` — touch control markup/CSS for the dead-zone ring, enlarged buttons and the new handbrake button.
-- `README.md` — updated controls table.
-## HUD/menu polish (ui.js)
+`ui.save()` writes `money`, `missionsDone`, `pkMask`, `standing`, `wanted`, `driftBest`, `sideDone` and a timestamp to `sunnycity.save.v1`; `loadSave()` restores them. `main.js` additionally persists `suncity.save` counters for cars-stolen on a 20-second interval and on `beforeunload`.
 
-- Photo mode: **F** cycles NORMAL / NOIR / WARM / COOL (HUD-canvas tint + vignette, so the filter is not baked into the saved PNG).
-- Minimap legend row (kamu / polisi / misi) under the minimap; pause menu has a STATISTIK block (drift best, collectibles, side jobs) — drift best and side jobs persist in the save.
+## Exported API
+
+`createUI(hud)` returns the `ui` object with `state`, `money`, `missionsDone`, `standing`, `settings`, `toast`, `addMoney`, `save`, `saveSettings`, `link`, `handleKey`, `click`, `update(dt, ctx)`, plus the map/log/photo/pause helpers above. `GARAGE_ROWS` is exported for `extras.js`. Many HUD fields are written by other modules (`weapon`, `ammo`, `mag`, `reserve`, `hit`, `wheel`, `station`, `prompt`, `standingHud`, `wanted`, `dead`), so the UI stays a thin render-plus-state layer.
 
 ## Build notes
 
-- The map screen (`M`) is drawn in `game/src/ui.js`; `buildMapCanvas` pre-renders the background once to an offscreen canvas, so only the white player arrow and yellow mission markers are redrawn live each frame.
-- District blocks are colour-coded from `districtOfBlock` in `world.js`, with labels `PUSAT` / `TENGAH` / `PINGGIR` (the `names` array in `ui.js`), over a dark road grid sampled from `world.tiles` and green patches from `world.parks`.
-- Settings persist to `localStorage` under the key `sunnycity.settings.v1`, exposing four options: render quality (RENDAH/SEDANG/TINGGI), shadows, mouse sensitivity, and master volume (via a new `audio.setVolume`).
-- Mouse sensitivity drives `combat.sens`, which scales pointer movement from screen centre; quality changes are applied live through `ui.onSettings`.
-- Photo mode (`P`) hides the HUD/minimap and orbits the camera; `F` cycles the tint filters NORMAL/NOIR/WARM/COOL (HUD-canvas only, not baked into the saved PNG), and `Enter` writes the WebGL canvas as a PNG.
-- The pause menu (`Esc`) navigates with up/down arrows and `Enter`, offering Resume / Settings / Save / Quit; the mission log (`Tab`) lists `MISSION_LIST` with active rows highlighted yellow and completed green.
-- Touch support in `game/src/touch.js` adds a visible dead-zone ring, enlarged stick/button hit areas, a dedicated **REM** (handbrake) button, a persistent **LARI** (sprint) toggle, and haptic `navigator.vibrate` on press.
-- `game/index.html` carries the touch-control markup/CSS; key routing for `M`/`Tab`/`P` and the photo orbit live in `game/src/main.js` (318 lines).
+- The map uses a cached offscreen canvas of `MAP_VIEW_W = 820` × `MAP_VIEW_H = 456`, reusing `districtOfBlock` for fills and `names = ['PUSAT','TENGAH','PINGGIR']` for labels.
+- Settings default to `{ quality: 'high', shadows: true, sensitivity: 0.5, volume: 0.7 }` and are clamped on load.
+- `drawMissionLog` lays out rows at `y = 172 + i * 42` in the `640..940` column, matching the click hit-test in `logClick` (first row 157, step 42).
+- Weapon display keys off `ui.reserve != null` to switch between mag and total-ammo representation for the compact SMG.
+- `ui.js` is 677 lines; `main.js` (366) wires keys, pointer events, settings and the photo/render loop.
+
+## How to test
+
+In-browser: `M` opens/closes the map; `Esc` → Settings → change quality/sensitivity/volume and confirm immediate effect; `Tab` opens the log and Enter starts a side job; `P` enters photo mode and `F` cycles filters. Confirm money, packages and standing persist across a reload. `MAKEFUN_OUTPUT_DIR=out node main.ts` exits clean.

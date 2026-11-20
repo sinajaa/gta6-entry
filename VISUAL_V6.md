@@ -1,51 +1,55 @@
-# VISUAL_V6 — renderer upgrades
+# VISUAL_V6 — Renderer upgrades
 
-This pass improves the `game/src/render3d.js` renderer with real code for ambient occlusion, sun god rays, car paint/glass shading, a quality gate for shadows+bloom, and per-frame prop culling. All changes are clean function rewrites (not line patches) and preserve the four `?shot=` screenshot scenes and the `MAKEFUN_OUTPUT_DIR=out node main.ts` build.
+`game/src/render3d.js` is the renderer (2791 lines). It builds the city meshes, draws the waterfront, cars, peds and props, runs the day/night tone-mapping pipeline plus bloom with god rays, and culls distant props each frame. This entry adds baked ambient occlusion, car paint and reflective glass, a quality gate on the expensive passes, and per-frame prop culling — all clean rewrites rather than line patches, preserving the four `?shot=` scenes and the build.
 
-## Cheap ambient occlusion
+## Ambient occlusion
 
-- **Near walls** — `makeGroundTexture` bakes a soft dark rim into the ground texture just outside every building footprint (two nested strips for a gentle falloff). Walls read as sitting on the street instead of floating over flat colour, at zero per-frame cost.
-- **Under cars** — the contact-AO `blobMesh` (previously software-only) is now built for the hardware renderer too. `syncActors` already writes one dark ellipse under every car, and the player, each frame; on hardware the static prop blobs are skipped (`gfx.blobStatic = 0`) so real shadow maps still do the tree/prop work.
+- **Near walls** — `makeGroundTexture` bakes a soft dark rim into the ground texture just outside each building footprint (two nested strips for a gentle falloff), so walls read as sitting on the street at zero per-frame cost.
+- **Under cars** — the contact `blobMesh` (one dark ellipse per car/player) is built for the hardware renderer too. `syncActors` writes one blob per vehicle each frame; static prop blobs are skipped via `gfx.blobStatic = 0` so real shadow maps still handle trees and props.
 
-## Exposure regression fix (post-pass)
+## Exposure regression fix
 
-The first AO/light pass over-darkened the scene: measured mean luminance fell to ~27 on the chase scene and ~71 on street (target 95–125), with crushed blacks. Root causes were the three darkening layers landing at once, all now tuned down while keeping god rays, car-paint sheen and the quality gate intact:
+The first AO/lighting pass over-darkened the scene (mean luminance dropped well below the 95–125 target). Each darkening layer was tuned down while keeping god rays, car sheen and the quality gate:
 
-- `makeGroundTexture` AO strips reduced from `rgba(0,0,0,0.14)`/`0.06` to `0.06`/`0.03`.
-- Contact-AO blob opacity under cars reduced from `0.22` to `0.12` on the hardware renderer (software keeps `0.35`).
-- Car paint `metalness` reduced from `0.7` to `0.1`. A metallic surface with no environment map contributes almost no diffuse, so `metalness: 0.7` read as near-black across every car. The clearcoat (`clearcoat: 1.0`) supplies the fresnel sheen, which is now what carries the glossy car-paint look instead of flattened metal.
+- `makeGroundTexture` AO strips from `rgba(0,0,0,0.14/0.06)` down to `0.06/0.03`.
+- Contact-AO blob opacity under cars from `0.22` to `0.12` on hardware (software keeps `0.35`).
+- Car paint `metalness` from `0.7` to `0.1` — a metallic surface with no environment map contributes almost no diffuse and read near-black. The `clearcoat: 1.0` now carries the glossy look.
 
-## Sun god rays through the fog
+## Sun god rays
 
-`compositeFrag` in the bloom pipeline gained a god-ray term: it marches each pixel toward the screen-space sun and accumulates the bright/fog glow buffer, producing light shafts. `updateGodRays` (called from `renderFrame`) projects the current `SUN_DIR`/`skySunDir` through the camera to set `uSun`, tints with `gfx.sun.color`, and fades strength to zero at night (the moon casts no shafts). No extra render passes or targets.
+`compositeFrag` in the bloom pass marches each pixel toward the screen-space sun and accumulates the bright/fog buffer to produce light shafts. `updateGodRays` (from `renderFrame`) projects the sun/moon direction through the camera to set `uSun`, tints with `gfx.sun.color`, and fades to zero at night (the moon casts no shafts) — no extra render targets.
 
-## Car paint fresnel + sky-reflecting windows
+## Car paint fresnel + reflective glass
 
-- `buildCarGeometry` now returns `{ paint, glass }` (a new colourless `mergeParts` twin of `mergeColored`). The glass pieces (cabin band + two side windows) are split out of the vertex-coloured paint shell.
-- Paint uses `MeshPhysicalMaterial` with `clearcoat` for a fresnel sheen and low `metalness` (`0.1`) so diffuse colour stays visible (falls back to `MeshLambertMaterial` on the software renderer).
-- Glass gets its own `makeGlassMaterial` shader (`glassVert`/`glassFrag`) that reflects the current day/night sky gradient (`uTop`/`uMid`/`uHor`, updated each frame from `updateDayNight`) along the reflected view ray, with a fresnel boost and a tight sun specular. It supersedes the old flat `#a9d6f2` tint and no longer inherits the car's paint colour under damage.
-- `syncActors` transforms the new `gfx.glassMesh` with the same per-car matrix (so damage squash still applies), while paint darkening stays on `gfx.carMesh`.
+- `buildCarGeometry` returns `{ paint, glass }`. Paint uses `MeshPhysicalMaterial` with `clearcoat` (fresnel sheen) and low metalness, falling back to `MeshLambertMaterial` on the software renderer.
+- Glass uses its own `makeGlassMaterial` shader (`glassVert`/`glassFrag`) reflecting the current day/night sky gradient along the reflected view ray, with a fresnel boost and a tight sun specular — replacing the flat `#a9d6f2` tint. `syncActors` drives `gfx.glassMesh` with the same per-car matrix so damage squash still applies.
 
-## Render quality toggles shadows + bloom
+## Quality gate & prop culling
 
-`applySettings` (`main.js`) now derives the expensive passes from the quality tier: **low** drops both bloom and shadow maps, **medium/high** run both. The existing dedicated "shadows" toggle still overrides the shadow map on top. `renderFrame` skips `renderBloom` (and `updateGodRays` zeroes its strength) when `gfx.bloomEnabled` is false, falling back to a direct tone-mapped render.
+- `applySettings` (`main.js`) derives the expensive passes from quality: **low** drops both bloom and shadow maps; **medium/high** run both. The dedicated shadows toggle still overrides. `renderFrame` skips bloom (and zeroes god-ray strength) when `gfx.bloomEnabled` is false.
+- Street furniture was previously `frustumCulled = false` and drawn in full every frame. `buildProps`/`buildPropSet` records each instance's matrix and world position into `gfx.props`; `cullProps` collapses instances beyond `CULL_RADIUS = 1050` to a near-zero matrix and restores them on return — without re-indexing buffers the traffic-light colour logic depends on.
 
-## Per-frame prop culling
+## Waterfront, night lamps & weather
 
-Street furniture (`treeMesh`, `boxMesh`, `cylMesh`, `signMesh`) was previously `frustumCulled = false` and drawn in full every frame. `buildProps` now records each instance's original matrix plus its world position into `gfx.props` (`buildPropSet`), and `cullProps` (called each frame) collapses instances beyond `CULL_RADIUS` (1050) to a near-zero matrix, restoring the original when the camera returns. This skips distant props without re-indexing the instance buffers that the traffic-light colour logic depends on.
+- The island edge carries an animated ocean (a `ShaderMaterial` plane at `OCEAN_SIZE = 6800`, 96×96 segments), a merged beach ring, instanced palms (54), parasols (16 from `UMBRELLA_COLORS`), a wooden pier on stilts with warm lamps, and a six-boat marina — all in `buildWaterfront` with roughly eight draw calls.
+- Street lamps add additive warm glow at night and faint wet-road reflection streaks after rain, scaled by `gfx.wetAmount` (set by `extras.js` weather). Verified luminance after tuning: 103/121/118/115.
 
-## Verification
+## Day/night & tone mapping
 
-`MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0; `node --check` passes on `game/src/render3d.js` and `game/src/main.js`. The four `?shot=` scenes are street/chase/firefight/driving daytime shots, all well within the cull radius and unaffected by the bloom/glass changes; the renderer remains a live WebGL scene with no headless unit tests, so runtime visuals are exercised in-browser.
-- Street lamps: additive warm glow sprites at night (opacity 0.35*night) and faint wet-road reflection streaks under lamps after rain (scaled by `gfx.wetAmount`); luminance verified 103/121/118/115.
+`updateDayNight` drives the sky gradient, sun/moon, fog and `gfx.renderer.toneMappingExposure` from `gfx.hour`, and caches the base exposure/sun/hemi in `gfx.base` used by the shot and weather overrides. Exposure, tone mapping and shot framing are hand-tuned and treated as off-limits in edits.
+
+## Exported API
+
+`initRenderer(canvas, hudCanvas, world)` builds and returns `gfx` (scene, camera, renderer, materials, meshes). Other exports: `makeGroundTexture`, `buildWorldMeshes`, `syncCombat`, `syncGhosts`, `syncActors`, `syncOcean` (internal), `renderFrame(gfx, world, player, fps, police, peds, missions, combat)`, and `drawHud`.
 
 ## Build notes
 
-- The ground AO is baked in `makeGroundTexture` as two nested dark strips (`rgba(0,0,0,0.06)` / `0.03`, previously `0.14`/`0.06`) just outside each building footprint — zero per-frame cost.
-- Contact-AO under cars uses `blobMesh` (now also on the hardware renderer) with opacity `0.12` (software keeps `0.35`), and `syncActors` writes one dark ellipse per car/player each frame; static prop blobs are skipped via `gfx.blobStatic = 0`.
-- Car paint `metalness` dropped from `0.7` to `0.1` (a metallic surface with no env map read as near-black); the fresnel sheen now comes from `clearcoat: 1.0`.
-- God rays are added in `compositeFrag` (marches toward the screen-space sun) and steered by `updateGodRays`, which projects `SUN_DIR`/`skySunDir` to set `uSun`, tints with `gfx.sun.color`, and fades to zero at night.
-- `buildCarGeometry` now returns `{ paint, glass }`; glass uses its own `makeGlassMaterial` shader (`glassVert`/`glassFrag`) reflecting the day/night sky gradient, replacing the flat `#a9d6f2` tint.
-- The quality gate in `applySettings` (`main.js`) drops both bloom and shadow maps at **low**, runs both at **medium/high**, and `renderFrame` skips `renderBloom` when `gfx.bloomEnabled` is false.
-- Prop culling: `buildProps`/`buildPropSet` records each instance's matrix and world position; `cullProps` collapses instances beyond `CULL_RADIUS = 1050` to a near-zero matrix (no buffer re-indexing), restoring them on camera return.
-- Ground/road tile colours are the `GROUND_COLORS` map: `T.ROAD #565b60`, `T.SIDEWALK #d9d2c3`, `T.GRASS #8fc16a`, `T.BUILDING #8c8173`.
+- Ground/road colours are the `GROUND_COLORS` map: `T.ROAD #565b60`, `T.SIDEWALK #d9d2c3`, `T.GRASS #8fc16a`, `T.BUILDING #8c8173`.
+- God rays live in `compositeFrag`/`updateGodRays`; bloom strength is `uStrength: 0.55` and the composite sun colour `#fff1dc`.
+- `buildCarGeometry` splits glass out of the vertex-coloured paint shell; `syncActors` sets both `gfx.carMesh` and `gfx.glassMesh` matrices per car.
+- Prop culling collapses instances at `CULL_RADIUS = 1050`; `buildCursor`/tree/box/sign/cylinder meshes are reused.
+- The four `?shot=` scenes (street/chase/firefight/driving) stay inside the cull radius and are unaffected by the bloom/glass changes.
+
+## How to test
+
+The renderer is live WebGL with no headless unit tests. Build with `MAKEFUN_OUTPUT_DIR=out node main.ts` (exits 0) and run the four screenshots via `?shot=street&seed=1` etc. to verify framing and luminance (95–125). In-browser: confirm god rays at day fade at night, car glass reflects the sky, low quality drops bloom/shadows, and distant props pop back in when approached. Brightness is validated with the `cap_lum` harness check.

@@ -1,54 +1,52 @@
 # AI_V6 — Living-world AI
 
-This entry extends the traffic, pedestrian and police systems into a coherent living world. All behaviour below is real simulation code (not scripted cutscenes) and lives in three modules under `game/src/`.
+This module set turns SUNNY CITY's procedural grid into a believable, reactive place. Every behaviour below is real simulation code running each frame — no scripted cutscenes. Three files carry the civilian and law-enforcement intelligence, and the renderer draws a couple of their on-screen cues.
 
 ## Where it lives
 
 | Behaviour | File |
 |---|---|
 | NPC traffic lane discipline + traffic-light obedience | `game/src/vehicle.js` |
-| Pedestrian sidewalk walking, crossings, panic/flee from gunfire | `game/src/peds.js` |
-| Police coordination (block-ahead, PIT, spike strips) | `game/src/police.js` |
-| Spike strip minimap marker | `game/src/render3d.js` |
+| Pedestrian sidewalks, crossings, gunfire panic, idle pauses | `game/src/peds.js` |
+| Coordinated police pursuit (PIT, block, spikes, foot patrol) | `game/src/police.js` |
+| Spike-strip minimap markers | `game/src/render3d.js` |
 
-## Cars: lane discipline and traffic lights
+## Cars: lanes and signals
 
-- Each NPC car is spawned onto a lane (`car.axis`, `car.lane`, `car.dir`) and holds that lane, constantly steering back toward it — a simple lane-keeping loop, not a rail.
-- Cars at intersections check the signal phase in `mustStopAtLight`. A global clock (the same `PHASE_SECONDS` used elsewhere) alternates which axis is "green". A car approaching a red light brakes using its own braking distance and holds at the stop line, then accelerates on green.
-- `blockedByCar` gives car-following so cars queue behind one another instead of ghosting through.
+- Every NPC car spawns onto a lane (`car.axis`, `car.lane`, `car.dir`) and steers constantly back toward it — a lane-keeping loop, not a rail. Cars are spawned in `createCars` (28 NPCs plus parked spots) and advanced in `updateNpc` from `updateTraffic`.
+- A car approaching its lane's next intersection asks `mustStopAtLight`, which reads a global `world.time` clock against `PHASE_SECONDS` to figure out which axis is green, then brakes using the car's own braking distance and holds at the stop line until the phase flips.
+- `blockedByCar` provides car-following so traffic queues bumper-to-bumper behind a stopped leader rather than ghosting through it.
 
-Location: `vehicle.js` — `updateNpc`, `mustStopAtLight`, `blockedByCar`.
+## Pedestrians: sidewalks, crossings, panic, idle
 
-## Pedestrians: sidewalks, crossings, gunfire flee
+- Pedestrians keep to sidewalk tiles. `turnWalk` picks a new direction only among options that stay on sidewalk, so they corner around blocks instead of clipping buildings.
+- `findCrossing` probes ahead for a road tile backed by sidewalk on the far side; a ped that finds one enters `CROSS`, walks straight across, then `snapToSidewalk` resumes the walk.
+- Gunfire and crashes both feed `alarmPeds`. `combat.js` calls it on every player shot and `main.js` on hard vehicle collisions; each warned ped enters `PANIC`, flees directly away from the noise, then `COWER`s before returning to walk.
+- Two idle states break up the loop organically: `PHONE` (pauses near a shop front) and `SIT` (rests on a bench in a park), both resuming after a timer.
+- Notes on the shared pool: any ped with `p.gang != null` is owned by `gangs.js`, and `updatePeds` skips it so the civilian and rival walkers never fight over steering.
 
-- Pedestrians walk only on sidewalk tiles (`sidewalkTiles`, `onSidewalk`, `turnWalk`), turning at corners rather than walking through buildings.
-- At a marked crossing, a pedestrian detects a road tile ahead of them with sidewalk on the far side (`findCrossing`), enters a `CROSS` state, walks straight across the road to the opposite sidewalk, then resumes sidewalk walking (`snapToSidewalk`).
-- Gunfire and crashes already trigger `alarmPeds` (wired from `combat.js` on every shot and from `main.js` on collisions, which feed the nearby `alarmPeds` calls). Each warned pedestrian enters `PANIC`, fleeing directly away from the noise source, then cowers briefly before returning to walk.
+## Police: coordinated pursuit
 
-Location: `peds.js` — `findCrossing`, `CROSS` state in `updatePeds`, `startPanic` / `alarmPeds`.
+`assignRoles` re-splits the chase every frame before the cop loop, then routes each officer:
 
-## Police: coordinated three-piece pursuit
+- **Block ahead** — the cop with the largest forward projection along the player's heading gets `BLOCK`; it drives out ahead, then swings perpendicular and stops across the lane (`blockAhead`). At five stars this stacks with the static `updateRoadblock`.
+- **PIT manoeuvre** — the cop deepest behind the player gets `PIT`; it dives for the rear quarter and, once close at the right lateral angle, taps the rear to spin and slow the player (`pitManeuver`, gated by `pitCooldown`).
+- **Spike strips** — at three stars or more, `updateSpikes` lays fresh strips on road/sidewalk ahead of the player, spaced so they never stack. Driving over one sets `car.flatT`, which `updateDrivenCar` reads to cut top speed and wobble steering for a few seconds. Strips deplete over time and appear as pale dashes on the minimap.
+- **Foot patrols** — two `state.officers` (data only, not rendered) walk the downtown block loop; while wanted with no patrol car within 150 units they run at the player instead (`updateOfficers`).
 
-At wanted levels the chasing cruisers split into roles each frame (`assignRoles`), then act accordingly:
+### Flow
 
-- **Block ahead** — the cop with the largest forward projection along the player's heading is assigned `BLOCK`; it drives out ahead and then swings perpendicular, stopping across the lane to cut off the escape (`blockAhead`). At five stars this stacks with the existing static roadblock.
-- **PIT manoeuvre** — the cop deepest behind the player is assigned `PIT`; it dives for the player's rear quarter and, once close and at the right lateral angle, taps the rear and applies a spin and speed loss to the player's car, with a cooldown (`pitManeuver`).
-- **Spike strips** — at three stars or more, `updateSpikes` lays fresh strips on the road ahead of the player's heading (picking road/sidewalk tiles, spaced so they don't stack). Driving over one deflates a tyre, which is applied through the driving model: the car's top speed drops and the steering wobbles for a few seconds (`vehicle.js` `updateDrivenCar` reads `car.flatT`). Strips deplete over time and are shown as pale dashes on the minimap.
-
-Location: `police.js` — `assignRoles`, `blockAhead`, `pitManeuver`, `updateSpikes`; deflation effect in `vehicle.js`.
-
-- **Foot patrols** — two officers (`state.officers`, data only, not yet rendered) walk the downtown block loop at ~2 u/s, run at the player while wanted until a patrol car is within 150 units, then resume the loop (`updateOfficers`).
-
-### Coordination flow
-
-`updatePolice` (called from `main.js` each frame) assigns roles before the cop loop, then routes each cop to `pitManeuver`, `blockAhead` or the existing `chase` logic; `updateSpikes`, the helicopter and roadblock continue to run alongside. No controls or mission scripts were changed.
+`updatePolice` (called from `main.js` each frame) assigns roles, then routes each cop to `pitManeuver`, `blockAhead`, or `chase`; the helicopter, roadblock, spikes and officers run alongside. No mission script or control binding was changed.
 
 ## Build notes
 
-- Traffic-light timing is `PHASE_SECONDS = 6` (defined at the top of `vehicle.js` with `ROAD_PERIOD = 10 * TILE`); `mustStopAtLight` computes `greenAxis = Math.floor(time / PHASE_SECONDS) % 2` to alternate the horizontal/vertical axes.
-- Pedestrian tuning lives in `peds.js`: `WALK_SPEED = 55`, `PANIC_SPEED = 160`, `PANIC_TIME = 4`, `COWER_TIME = 2` (all units/sec and seconds), with `findCrossing` walking a ray from a road tile to the far sidewalk.
-- Foot patrols are constants in `police.js` (`FOOT_WALK = 2`, `FOOT_RUN = 95`, `FOOT_ARRIVE = 150`); `updateOfficers` moves the two `state.officers` along the downtown loop and only switches them to running while wanted.
-- Spike-strip placement in `updateSpikes` checks `ground === T.ROAD || ground === T.SIDEWALK` and keeps a `SPIKE_CLEAR` separation so strips never stack; a hit writes `car.flatT` that `vehicle.js` `updateDrivenCar` reads to drop top speed and wobble steering.
-- Role assignment (`assignRoles`) picks `BLOCK` from the cop with the largest forward projection and `PIT` from the one deepest behind, both refreshed every frame before the cop loop.
-- `alarmPeds` is wired from two call sites — `combat.js` on every player shot and `main.js` on vehicle collisions — so both gunfire and crashes push nearby peds into `PANIC`.
-- Module line counts at this checkpoint: `vehicle.js` 208, `peds.js` 200, `police.js` 437, `render3d.js` 2777.
+- Traffic-light timing is `PHASE_SECONDS = 6` in `vehicle.js` (`ROAD_PERIOD = 10 * TILE`); `mustStopAtLight` does `greenAxis = Math.floor(time / PHASE_SECONDS) % 2` to alternate axes.
+- Pedestrian tuning in `peds.js`: `WALK_SPEED = 55`, `PANIC_SPEED = 160`, `PANIC_TIME = 4`, `COWER_TIME = 2` (units/sec and seconds); `alarmPeds` also has a radius parameter so call sites (gunfire 150–200, crashes 300) scale the panic circle.
+- Police constants: `MAX_SPEED = [0,240,290,320,330,360]` and `COP_COUNT = [0,1,2,3,4,5]` per star; `PIT_RANGE = 60`, `PIT_ANGLE = 0.7`, `PIT_COOLDOWN = 3`; spike `SPIKE_AHEAD_MIN = 170` / `MAX = 330`, `SPIKE_MAX = 6`, `SPIKE_LIFE = 14`; foot patrol `FOOT_WALK = 2` / `FOOT_RUN = 95` / `FOOT_ARRIVE = 150`.
+- Role assignment picks `BLOCK` from the cop with the largest forward projection and `PIT` from the one deepest behind, both recomputed each frame before the chase loop.
+- `alarmPeds` is wired from two sites — `combat.js` (every shot) and `main.js` (collision) — so both gunfire and crashes spook nearby peds.
+- Module sizes at this checkpoint: `vehicle.js` 210 lines, `peds.js` 203, `police.js` 526, `render3d.js` 2791.
+
+## How to test
+
+The AI is a live in-browser simulation with no headless unit tests. Serve the game (`MAKEFUN_OUTPUT_DIR=out node main.ts` to build, then `node serve.ts`) and watch traffic brake at red lights, pedestrians scatter when you shoot, and a 3+ star chase trigger spike strips, a PIT, and a block-ahead cruiser. The `?shot=chase` scene is a deterministic hand-placed pursuit for a quick visual check.

@@ -1,93 +1,45 @@
-# MISSIONS_V6 — side jobs and checkpoint respawn
+# MISSIONS_V6 — Story chain, side jobs & checkpoint respawn
 
-This checkpoint adds four player-started **side jobs** launched from the mission log, plus a **checkpoint respawn** system so a failed mission retries from its last objective instead of from the very beginning. The eight chained story missions and the controls are unchanged.
+`game/src/missions.js` holds the mission system: eight chained story missions plus six player-started side jobs, all driven by a data table and a per-mission handler registry, with checkpoint respawn so a failed mission retries from its last objective.
 
-## Design constraints honored
+## Design shape
 
-- **Story missions frozen** — the eight chained missions (`delivery` … `finale`) and the cursor that advances them are untouched. The side jobs are appended to `MISSION_LIST` with a `kind: 'side'` flag and are never reached by the story cursor, so the narrative loop runs exactly as before.
-- **Controls untouched** — no existing keybinding changes. The mission log (Tab) gains arrow-key selection and Enter/mouse to start a *side* job only; existing keys keep their meaning.
-- **One file for logic** — all mission logic lives in `game/src/missions.js`, with only narrow read-only UI glue in `game/src/ui.js` and `game/src/main.js`.
+- **Story frozen** — the eight missions (`delivery` … `finale`) advance through a cursor (`cursor = (cursor + 1) % STORY_MISSIONS`), untouched. Side jobs are appended to `MISSION_LIST` with `kind: 'side'` and are never reached by the story cursor; they start manually from the mission log.
+- **Data-driven** — every mission is a row in `MISSION_LIST` with `id`, `title`, `who`, `reward`, `limit`, `intro`, `win`, `lose` (and `kind` for side jobs). A `HANDLERS` map gives each one its `update(a, focus, dt)`, `text(a)`, `markers(a)`, `target(a)`, and an optional `noLimit`.
 
-## What was added
+## Eight story missions
 
-### Four side jobs (started from the mission log)
+courier delivery (pick up → deliver), car chase (tail a fleeing car), target execution (destroy a parked car), escort protection (defend Lena from thugs for 60 s), warehouse theft (grab cargo → police → safe point), a checkpoint race, a police siege (survive 45 s), and the finale (meet the boss, destroy his car). Rewards climb 300 → 1500.
 
-**1. `heist` — PERAMPOKAN BANK (2 GELOMBANG)**
+## Six side jobs (from the mission log)
 
-A three-stage job with a two-wave police siege and a car escape:
+1. **heist** (PERAMPOKAN BANK, 2 gelombang) — reach the bank, then hold through two 20-second police waves while a pulse timer re-heats the wanted level, then escape by car to a safe point `350–650` units away. Reward `$1200`.
+2. **taxi** (TARIF TAKSI) — pick up a passenger, deliver to a `350–700`-unit destination. `$400`, timed 90 s.
+3. **stunt** (LOMPATAN STUNT, 3 ramp) — three ramps; enter each within 34 units at >140 units/sec, score air time (up to 100 = `air * 80`) plus a +40 clean landing, then finish. Reward `$900`.
+4. **bounty** (BURUAN HIDUP) — chase a target at 240 units/sec (hp 150); tail within 30 units (drains 40 hp/s) or ram at >150 (80 hp/s); 2.5 s hold or 0 hp finishes. `$1000`, timed 90 s.
+5. **pizza** (KIRIM PIZZA, 3 titik) — deliver three chained drops, bonus for speed. `$250` + bonus.
+6. **repo** (REPOSESSI MOBIL) — steal a marked car, return to the garage before it drops to 35% hp. `$1500`.
 
-- **Stage 0 (reach the bank):** a yellow marker leads to the vault. Crossing `REACH` triggers the next stage, calls `addHeat(world, 150, 'heist')`, and toasts "GELOMBANG 1".
-- **Stage 1 (survive two waves):** each wave lasts `waveDuration = 20s`. A `pulse` timer re-heats the wanted level so cops keep arriving. After the second wave completes, the job advances.
-- **Stage 2 (car escape):** a new safe-point marker spawns `350–650` units away; reaching it calls `finish()`.
-- Reward `$1200`, no time limit beyond the story `limit` guard.
+## Checkpoint respawn
 
-**2. `taxi` — TARIF TAKSI BERJALAN**
+On `fail()`, if the active mission has advanced past stage 0, its objective state is captured into `m.checkpoint` (`stage`, plus per-mission fields like `dest`, `pickup`, `points`, `score`, `ramps`, and heist `wave`/`waveT`/`waveDuration`). The next `start()` of the same id restores it, so a retry resumes at the last passed objective. `m.checkpoint` clears on `finish()` and on any unrelated start.
 
-- **Stage 0 (pickup):** drive to the pickup marker; crossing `REACH` sets the trip and toasts "PENUMPANG NAIK".
-- **Stage 1 (drop off):** a destination marker spawns `350–700` units away; reaching it calls `finish()`.
-- Timed: the `limit` of `90s` is enforced by the shared mission timer. Reward `$400`.
+## Mission-log selection (UI)
 
-**3. `stunt` — LOMPATAN STUNT (3 RAMP)**
+`ui.logIdx` tracks a highlighted row; Up/Down move it, Enter or a click starts a *side* job (closing the log). Side rows render cyan with a "SIDE JOB — Enter untuk mulai" hint; the selected row gets a gold outline. `main.js` routes pointer-down to `ui.logClick` while the log is open.
 
-A timed side job scored on three marked ramps by **air time** and **landing**:
+## Exported API
 
-- **Three ramps** are spawned along the city's lane points (each `160–340` units from the last), shown as yellow markers; the next ramp in sequence is the active target.
-- The player must be in a car (`playerCar` detects a `speed`/`angle` focus) and hit the ramp mark within `34` units while travelling faster than `140` units/sec; slower approach toasts "LAJU TERLALU PELAN".
-- Crossing the ramp at speed begins an "airborne" window: `a.air` accumulates `dt` per frame until landing is detected (car slows below `90` or travels `260+` units past the ramp).
-- On landing, the jump is scored: **air time** → up to `100` points (`air * 80`, capped), plus **landing** → `+40` if the car is still rolling cleanly (speed `>40` and `<260`, still on car wheels). The per-ramp total is added to `a.score`.
-- After the third ramp the job calls `finish()`. Reward `$900`, `limit` `120s`.
-- Checkpoint respawn preserves `a.score` and the remaining `a.ramps` (via `score`/`ramps` fields in `m.checkpoint`).
-
-**4. `bounty` — BURUAN HIDUP**
-
-A timed car-chase where the target flees fast and must be stopped before the timer expires:
-
-- A `mark` car spawns `260–380` units ahead with `hp = 150` and runs at a constant `240` units/sec via `driveLane`, following the lane grid and bouncing at world edges.
-- **Stop the target** by tailing within `30` units (accumulates `a.hold` and drains `40 hp/s`) or **ramming** at speed (`>150` units/sec drains `80 hp/s`). Staying close `2.5s` or reducing `hp` to `0` calls `finish()`.
-- The shared mission `limit` of `90s` is the expiry: if the target is not stopped in time, the job `fail()`s.
-- Reward `$1000`; the target car is cleaned up on finish/fail like the story `chase`/`execute` cars.
-
-**5. `pizza` — KIRIM PIZZA (3 TITIK)**
-
-A small timed delivery side job:
-
-- Three drop points spawn in a chain (`spot(w, from, 250, 500)` each), the HUD marker advances to the next point as each pizza is delivered, and delivering all three triggers `finish()`.
-- A **cash bonus** is paid on top of the base `$250` for finishing quickly: the remaining `limit` is converted via `a.bonus = round(left) * 5` and folded into the reward inside `finish()`.
-- The `180s` limit is the shared mission expiry.
-
-**6. `repo` — REPOSESSI MOBIL**
-
-A steal-and-return side job that reuses the garage location:
-
-- A cyan parked `mark` car spawns `260–450` units away (`speed 0`, like the story `execute`). Reaching it "steals" it: the marked car is removed from `world.cars`, `addHeat(world, 120, 'repo')` raises the wanted level, and the player drives it toward the garage.
-- **Wrecking** is tracked against the car's starting health (captured at steal time into `startHp`); if `hp` drops to `35%` of it, the job `fail()`s.
-- Reaching the garage (`dist < 60`, garage resolved from `world.garage` set by `extras.js`) calls `finish()`. Reward `$1500`.
-
-### Checkpoint respawn
-
-- On `fail()`, if the active mission has advanced past `stage 0`, the current objective state is captured into `m.checkpoint` — `stage`, and per-mission objective fields (`dest`, `pickup`, `points`, and heist wave timers `wave` / `waveT` / `waveDuration`).
-- On the next `start()` of that same mission id, `m.active` is repopulated from the checkpoint, so the retry resumes at the last objective (e.g. heist wave 2 instead of the drive to the bank, taxi drop off instead of pickup, race at the last passed checkpoint).
-- `m.checkpoint` is cleared on `finish()` and on any unrelated mission start, so no stale state leaks across completed or different missions.
-
-### Mission-log selection (UI)
-
-- `ui.logIdx` tracks the highlighted row; Up/Down move it and Enter starts the selected *side* job (it closes the log and calls `missions.startSide`).
-- Side-job rows render in a distinct cyan (`#7fd6ff`) with the hint "SIDE JOB — Enter untuk mulai"; the selected row gets a gold outline.
-- Mouse click on a row selects and starts it via `ui.logClick`, wired in `main.js`'s pointer-down handler while the log is open.
-
-## Files changed
-
-- `game/src/missions.js` — six new `MISSION_LIST` entries, the `heist`, `taxi`, `stunt`, `bounty`, `pizza`, and `repo` handlers, their `init` branches, `startSide`, `playerCar`, the per-mission `bonus` reward in `finish()`, and the checkpoint cache/restore in `start`/`fail`/`finish`.
-- `game/src/ui.js` — `logIdx`, `logSelect`, `logStartSelected`, `logClick`, log-open key handling, and the rewrite of `drawMissionLog` to select/start side jobs.
-- `game/src/main.js` — pointer-down routing to `ui.logClick` when the log is open.
-- District job reputation: `standing.js` `job()` counts finished jobs per district; at 3 it pays +$50 per job (call in `missions.js finish()`) and `repairPrice` gives 20% off garage repair (`extras.js`).
+`createMissions(world, ui, audio)` returns `{ list, active, done, markers, target, focus, checkpoint, next(), startSide(id), start(id), update(dt, player, w), abort(), objectiveText }`. `MISSION_LIST` is exported directly. The same `markers`/`target`/`objectiveText` contract is reused by the v8 heist, race and taxi modules, so `main.js` composes a single `objectiveView` the renderer consumes without changes.
 
 ## Build notes
 
-- All logic is in `game/src/missions.js` (591 lines); the six side jobs are appended to `MISSION_LIST` with `kind: 'side'` so the story cursor (`MISSION_LIST.indexOf(...) + 1 % length`) never reaches them.
-- Side-job rewards/l​imits as declared in `MISSION_LIST`: heist `reward: 1200, limit: 240`, taxi `400/90`, stunt `900/120`, bounty `1000/90`, pizza `250/180`, repo `1500/180`.
-- The heist runs two 20-second waves (`waveDuration = 20s`) with a `pulse` timer re-heating the wanted level; stage 2 spawns a safe-point marker `350–650` units away.
-- The stunt job scores air time up to 100 points (`air * 80` capped) plus `+40` for a clean landing (speed `>40` and `<260`); it requires entering the ramp within `34` units while travelling faster than `140` units/sec.
-- The bounty target spawns `260–380` units ahead with `hp = 150`, runs at `240` units/sec via `driveLane`; tailing within `30` units drains `40 hp/s`, ramming at `>150` units/sec drains `80 hp/s`, and a `2.5s` hold finishes it.
-- Checkpoint respawn stores `stage` plus per-mission fields (`dest`, `pickup`, `points`, and heist `wave`/`waveT`/`waveDuration`) into `m.checkpoint` on `fail()`, restored in `start()` when the id matches, and cleared on `finish()`.
-- Mission-log selection lives in `game/src/ui.js` (`logIdx`, `logSelect`, `logStartSelected`, `logClick`); side rows render cyan `#7fd6ff` with the hint "SIDE JOB — Enter untuk mulai", and `main.js` routes pointer-down to `ui.logClick` while the log is open.
+- All mission logic is in `game/src/missions.js` (728 lines); the six side jobs live in `MISSION_LIST` with `kind: 'side'` and their names/rewards mirror the README.
+- Side rewards/limits: heist `1200/240`, taxi `400/90`, stunt `900/120`, bounty `1000/90`, pizza `250/180`, repo `1500/180`.
+- Checkpoint `snapshotCheckpoint` stores `stage` and the per-mission fields on `fail()`; `restoreCheckpoint` reapplies them on the next matching start.
+- Stunt scoring requires entering the ramp within 34 units while travelling >140 units/sec; a slower approach toasts "LAJU TERLALU PELAN".
+- `finish()` adds the reward plus any `a.bonus`, bumps `missionsDone` (story only), pays district rep, and calls `ui.save()`; a cooldown `gap` spaces the next story mission.
+
+## How to test
+
+Serve the game and press `Tab` to open the log; arrow to a side job, press Enter to start it, and confirm the marker advances through stages. Kill/zero a mission to trigger `fail()`, restart it, and confirm it resumes at the last objective rather than stage 0. The eight story missions chain automatically after each `finish()`. `MAKEFUN_OUTPUT_DIR=out node main.ts` exits clean.

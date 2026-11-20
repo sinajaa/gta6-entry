@@ -1,81 +1,44 @@
-# WORLD_V6 — island waterfront
+# WORLD_V6 — Procedural city & island waterfront
 
-This checkpoint frames the procedural city as an island and adds a living waterfront around its edge: an animated ocean with sun glitter, a sand beach with palms and parasols, a wooden pier, and a small marina. Everything below is real scene geometry (not backdrop trickery) and lives in one place — a `buildWaterfront` seam inside `game/src/render3d.js`.
+`game/src/world.js` generates the procedural city grid; `game/src/render3d.js` frames it as an island with a living waterfront. Together they define the playable space SUNNY CITY runs on. Everything is real scene geometry, not backdrop trickery.
 
-## Design constraints honored
+## The city grid
 
-- **Low draw calls** — the whole seam uses merged or instanced geometry, so it adds roughly eight draw calls total:
-  - the ocean is a single `ShaderMaterial` plane,
-  - the beach ring is one `mergeColored` mesh,
-  - palms, beach umbrellas, pier lamps and boats are one `InstancedMesh` each,
-  - the pier and the marina dock are one `mergeColored` mesh each.
-- **Gameplay untouched** — nothing here edits `world.js` tiles, lane points, or AI logic. All props sit *outside* the city grid (the island is the existing 80×80 tile block), so cars, pedestrians, police and missions behave exactly as before.
-- **Screenshots unaffected** — the four `?shot=` scenes (`street`, `chase`, `firefight`, `driving`) are all well inside the island, so the beach, ocean, pier and marina never enter their frames.
+- A `COLS = 80` × `ROWS = 80` tile grid at `TILE = 32` (world 2560×2560 units). Tiles are `T = { ROAD: 0, SIDEWALK: 1, GRASS: 2, BUILDING: 3 }`, laid out on a `PERIOD = 10` cadence: roads on the first two rows/cols of each block, sidewalk bands on the next, and lots in the middle.
+- Lots are split recursively (`splitRect`/`layoutLots`) into 3–4 buildings per block with deterministic `mulberry32` randomness; ~10% of blocks become parks instead. Building heights scale by district (`districtFloors`).
+- Three districts — PUSAT (centre, tallest), TENGAH, PINGGIR (outskirts) — resolved by `districtOfBlock(bx, by)` from each block's distance to the map centre. `districtAt(x, y)` maps a world coordinate to a district.
+- `buildLanePoints` precomputes the drivable lane samples; every route, spawn, chase, race and pickup system draws its random points from `world.lanePoints`.
 
-## What was added
+## The waterfront (render3d.js `buildWaterfront`)
 
-### Ocean plane with gentle waves and sun glitter
-- A large plane (`OCEAN_SIZE = 6800`, 96×96 segments) sits below the island at `y = -4` and extends far past every edge.
-- A GLSL `ShaderMaterial` displaces each vertex with three summed low-frequency sine waves (a gentle swell, not a churning sea), recomputing an analytic surface normal so lighting stays coherent.
-- The fragment shader blends shallow→deep water by surface angle, then adds:
-  - a specular glint (`reflect` + a sharp Blinn-style highlight) for the sun,
-  - moving sparkle speckles from a time-seeded `hash21`,
-  - a brighter **sun-glitter sheen band hugging the island edge** — a distance-to-island function (`uIslandHalf`) and a time-oscillating term concentrate the sparkle along the shore,
-  - a night tint (`uNight`) that cools and dims the surface after dark.
-- `syncOcean` updates `uTime` (wave movement), the sun/moon direction, and the night amount every frame from `renderFrame`.
+- **Ocean** — a `ShaderMaterial` plane (`OCEAN_SIZE = 6800`, 96×96 segments) at `y = -4`, displaced by three summed low-frequency sine waves with an analytic normal. The fragment shader adds sun specular, moving sparkle speckles, a brighter sun-glitter band hugging the shore, and a `uNight` tint. `syncOcean` updates time, sun/moon direction and night amount each frame.
+- **Beach** — a merged ring of sandy quads with wet-sand corners, plus 54 instanced palms and 16 instanced parasols tinted from `UMBRELLA_COLORS = ['#ff3b6b', '#18c8ff', '#ffd23a', '#9b5cff', '#2ee06a']`.
+- **Pier** — a merged wooden deck on two rows of stilts with railings and a line of instanced warm-glow lamps per side.
+- **Marina** — a floating dock (twin pontoons + deck + three slips) with six instanced boats moored alongside.
 
-### Sand beach strip
-- A rectangular ring of sandy quads (one merged mesh) wraps the island edge just outside the city grid, with slightly darker "wet sand" corners.
-- **Palm trees** — 54 instanced palms (a bent trunk plus fanned fronds, built with `mergeColored`) are scattered around the four beach edges with random yaw and scale.
-- **Beach umbrellas** — 16 instanced parasols (pole + cone canopy) cluster near the pier and scatter elsewhere, colored from the existing `UMBRELLA_COLORS` palette.
+The whole seam is merged/instanced geometry for roughly eight draw calls, and it sits outside the city grid so cars, peds, police and missions behave exactly as before.
 
-### Wooden pier on stilts
-- A merged wood deck runs east off the island, supported by two rows of cylinder stilts that descend to the seabed.
-- Railings with posts and top/mid rails run along both sides, and a row of instanced warm-glow lamps lines each railing so the pier reads at night.
+## Player and world tuning
 
-### Small marina with moored boats
-- A floating dock (twin pontoons plus wooden deck planks and three finger slips) sits beside the pier at the waterline.
-- Six instanced boats (hull, gunwale, cabin and roof in a single merged geometry) are moored alongside, each tinted a different color.
+- `game/src/player.js` defines movement: `WALK = 150`, `SPRINT = 260`, `SWIM = 70`, with sprint stamina (`STAMINA_MAX = 100`, drain 22/s, regen 30/s). Within `WATER_EDGE = 260` of the island edge the player swims.
+- Enterable interiors (`game/src/interiors.js`) add five walk-in spaces — restaurant, gun shop, bank, diner and laundromat — each with `E`-to-enter doors and spot interactions (`meal`, `ammo`, `vault`).
 
-## Enterable interiors
+## Exported API
 
-A new fourth enterable interior joins the existing three (restaurant, gun shop, bank) behind the
-same registry in `game/src/interiors.js`:
-
-- **Diner** — a small counter-service diner reachable like the others (`E` at its door, walk in with
-  WASD, `E` at a counter seat to buy a meal and refill HP). A long front counter with a top rail and
-  a gold register, a row of counter stools, and two side tables with stools fill the room. It reuses
-  the identical door/exit/spot logic as the other interiors, so it costs no new systems — just one
-  more `kind` entry plus a `furnish` branch.
-
-## Files changed
-
-| File | Change |
-|---|---|
-| `game/src/render3d.js` | `buildWaterfront` seam (ocean/beach/palms/umbrellas/pier/marina), `buildPalmGeometry`, `buildBoatGeometry`, `flatQuad`, ocean shaders, and `syncOcean` wired into `renderFrame` |
-| `game/src/interiors.js` | fourth enterable interior (diner with counter and stools) added to the existing `KINDS` registry and `furnish` branch |
-
-The player now slows to a swim pace (`SWIM = 70`) when within `WATER_EDGE = 260` of the island edge (see `game/src/player.js`).
-
-No mission scripts, control bindings or world-generation code were changed.
-
-Drifting now slides the car sideways (handbrake or full-lock at speed) to build a drift score, emit short-lived rear-tire smoke, and pay a small cash bonus when the chain decays to grip (see `game/src/vehicle.js` and `game/src/combat.js`).
-
-A one-time cinematic flyover sweeps the camera over the city right after the title screen, skippable with any key (`game/src/camera.js`). Six hidden gold tokens are scattered across the three districts, paying cash on touch and reporting a `TOKEN n/6` counter in the HUD (`game/src/extras.js`).
-
-Peds occasionally pause near shop fronts to check a phone (`PHONE`) or sit on a bench in a park (`SIT`), then resume walking (`game/src/peds.js`).
-
-## Verification
-
-`MAKEFUN_OUTPUT_DIR=out node main.ts` exits 0 and packs the entry. The waterfront is a live WebGL scene with no headless unit tests; it is exercised in-browser alongside the rest of the renderer.- Interiors: added a 5th enterable interior, LAUNDROMAT (washers, counter, neon sign), registered in KINDS/SPOTS/furnish like the diner.
+- `world.js`: `createWorld(seed = 1337)` → `{ tiles, buildings, parks, lanePoints, width, height }`; `tileAt(world, x, y)`; `districtOfBlock(bx, by)`; `districtAt(x, y)`; constants `TILE`, `COLS`, `ROWS`, `WORLD_W`, `WORLD_H`, `T`.
+- `player.js`: `createPlayer(x, y)` → a player object; `updatePlayer(p, keys, world, dt)`.
+- `interiors.js`: `createInteriors(ctx)` → `{ active, doors, tryInteract(), update(dt, keys), beforeDraw(), afterDraw() }`.
+- `render3d.js` `buildWaterfront` is internal to `initRenderer`/`buildWorldMeshes`.
 
 ## Build notes
 
-- The entire waterfront seam lives in `buildWaterfront` inside `game/src/render3d.js`, using merged/instanced geometry for roughly eight draw calls: ocean plane, beach ring, one `InstancedMesh` each for palms/umbrellas/lamps/boats, and `mergeColored` meshes for pier and dock.
-- The ocean is a `ShaderMaterial` plane of `OCEAN_SIZE = 6800` (96×96 segments) at `y = -4`, displaced by three summed sine waves with an analytic normal; `syncOcean` updates `uTime`, sun/moon direction, and night amount each frame from `renderFrame`.
-- Beach props are instanced counts: **54** palms, **16** parasols tinted from `UMBRELLA_COLORS = ['#ff3b6b', '#18c8ff', '#ffd23a', '#9b5cff', '#2ee06a']`, and six boats moored at the marina.
-- The player slows to swim pace when near water: `SWIM = 70`, `WATER_EDGE = 260` in `game/src/player.js` (vs. walk `WALK = 150`, sprint `SPRINT = 260`, `STAMINA_MAX = 100`).
-- Enterable interiors are registered in `game/src/interiors.js` (236 lines) with shared `KINDS`/`SPOTS`/`furnish` logic and constants `HALF_W = 120`, `HALF_D = 90`, `WALL_H = 44`, `DOOR_RANGE = 30`; the five interiors are restaurant, gun shop, bank, diner, and laundromat.
-- The cinematic flyover after the title screen is skippable with any key (`game/src/camera.js`, 190 lines); six hidden gold tokens pay cash on touch and report a `TOKEN n/6` HUD counter (`game/src/extras.js`).
-- Pedestrians add two idle states in `peds.js`: `PHONE` (pauses near shop fronts) and `SIT` (bench in a park), both returning to walk after a timer.
-- Drift scoring lives in `vehicle.js`/`combat.js`: handbrake or full-lock at speed slides the car, emits rear-tire smoke, and pays a small cash bonus when the chain decays to grip.
+- District floors: pusat `3–6`, tengah `2–4`, pinggir `1–3` floors; `districtFloors` multiplies by `TILE` for height.
+- `layoutLots` splits a 6×6 lot interior into 3 or 4 buildings; roofs reuse the wall colour.
+- Shore props are instanced counts: 54 palms, 16 parasols, 6 boats; `OCEAN_SIZE = 6800`.
+- Player edge detection: `edgeD = min(x, y, width-x, height-y)`; `inWater = edgeD < WATER_EDGE`.
+- Interiors use `HALF_W = 120`, `HALF_D = 90`, `WALL_H = 44`, `DOOR_RANGE = 30`, `USE_RANGE = 34`, with interaction constants `VAULT_CASH = 2500`, `AMMO_PRICE = 200`, `MEAL_PRICE = 50`.
+- Module sizes: `world.js` 144 lines, `player.js` 48, `interiors.js` 301, `render3d.js` 2791.
+
+## How to test
+
+Build with `MAKEFUN_OUTPUT_DIR=out node main.ts` and serve. Confirm the island edge shows ocean, beach, pier and marina; walk past `WATER_EDGE` to slow to swim pace; find doors (beam markers) and enter each interior with `E`; and open the map (`M`) to see the three district blocks over the road grid. The four `?shot=` scenes are all inside the island and unaffected by the waterfront.
