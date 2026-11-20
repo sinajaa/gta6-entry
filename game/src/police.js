@@ -14,6 +14,8 @@ const COP_COLOR = '#2456c4', BLOCK_COLOR = '#2a5aff';
 const HELI_SPEED = 260, HELI_OFFSET = 150, BLOCK_MIN = 400, BLOCK_MAX = 700;
 const PIT_RANGE = 60, PIT_ANGLE = 0.7, PIT_SPIN = 0.9, PIT_COOLDOWN = 3;
 const SPIKE_AHEAD_MIN = 170, SPIKE_AHEAD_MAX = 330, SPIKE_MAX = 6, SPIKE_LIFE = 14, SPIKE_CLEAR = 48;
+// Batas iterasi DDA pengecekan line-of-sight; mencegah loop tak berujung pada sinar degenerasi.
+const LOS_STEPS = 400;
 
 const FOOT_WALK = 2, FOOT_RUN = 95, FOOT_ARRIVE = 150;
 const LOOP_MIN = 3 * ROAD_PERIOD + TILE, LOOP_MAX = 4 * ROAD_PERIOD + TILE;
@@ -106,7 +108,7 @@ export function hasLineOfSight(world, ax, ay, bx, by) {
   let maxX = dx > 0 ? ((tx + 1) * TILE - ax) / dx : dx < 0 ? (tx * TILE - ax) / dx : Infinity;
   let maxY = dy > 0 ? ((ty + 1) * TILE - ay) / dy : dy < 0 ? (ty * TILE - ay) / dy : Infinity;
 
-  for (let guard = 0; guard < 400; guard++) {
+  for (let guard = 0; guard < LOS_STEPS; guard++) {
     if (tileAt(world, tx * TILE + 1, ty * TILE + 1) === T.BUILDING) return false;
     if (tx === endX && ty === endY) return true;
     if (maxX < maxY) { tx += stepX; maxX += deltaX; } else { ty += stepY; maxY += deltaY; }

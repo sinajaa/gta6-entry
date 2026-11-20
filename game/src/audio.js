@@ -19,6 +19,7 @@ export function createAudio() {
   };
 
   function noiseBuffer(seconds) {
+    // Clamp ke >= 1 sampel: Math.floor bisa 0 bila seconds sangat kecil, dan buffer 0-length invalid.
     const buf = ac.createBuffer(1, Math.max(1, Math.floor(ac.sampleRate * seconds)), ac.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
