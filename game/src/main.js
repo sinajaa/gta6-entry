@@ -21,6 +21,7 @@ import { createRaces, updateRaces } from './races.js';
 import { createEconomy, updateEconomy } from './economy.js';
 import { createStats, updateStats } from './stats.js';
 import { createTaxi, updateTaxi } from './taxi.js';
+import { createPhoto, updatePhoto } from './photo.js';
 
 const canvas = document.getElementById('game');
 const world = createWorld();
@@ -107,7 +108,11 @@ ui.onSave = persistSaveCounters;
 ui.saveCounters = saveCounters;
 
 // Mode foto: orbit kamera mengelilingi pemain.
-const photo = { yaw: -Math.PI / 2, pitch: 0.35, dist: 90, hintT: 0 };
+const photo = createPhoto({
+  gfx, canvas, world, ui,
+  focus: () => player.car || player,
+  render: () => renderFrame(gfx, world, player, fps, police, peds, missions, combat),
+});
 
 updateCamera3D(gfx.camera, player, 'walk', 1, world);
 renderFrame(gfx, world, player, 0, police, peds, undefined, combat);
@@ -159,7 +164,7 @@ function pressKey(e) {
   if (action === 'pause') { keys.clear(); touch.reset && touch.reset(); combat.mouseDown = false; audio.click(); }
   if (action === 'resume') audio.click();
   if (action === 'quit') { keys.clear(); audio.click(); }
-  if (action === 'photo-shot') saveScreenshot();
+  if (action === 'photo-shot') photo.save();
   return action;
 }
 
@@ -223,14 +228,6 @@ addEventListener('keydown', (e) => {
     if (k === 't' && !e.repeat) { if (taxi.onKey()) { e.preventDefault(); return; } }
     if (k === 't' && !e.repeat) { stats.toggle(); e.preventDefault(); return; }
   }
-  // Navigasi mode foto (orbit + simpan).
-  if (ui.state === 'PHOTO') {
-    if (k === 'arrowleft') photo.yaw += 0.08;
-    else if (k === 'arrowright') photo.yaw -= 0.08;
-    else if (k === 'arrowup') photo.pitch = Math.min(0.9, photo.pitch + 0.06);
-    else if (k === 'arrowdown') photo.pitch = Math.max(0.02, photo.pitch - 0.06);
-    if (k.startsWith('arrow')) { e.preventDefault(); }
-  }
   pressKey(e);
   if (ui.state !== 'PLAYING') { if (k === ' ' || k.startsWith('arrow')) e.preventDefault(); return; }
   if (k === 'e' && !e.repeat) enterExit();
@@ -247,6 +244,7 @@ function frame(now) {
   last = now;
   frames++; fpsTimer += rawDt;
   if (fpsTimer >= 0.5) { fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0; }
+  if (ui.state !== 'PHOTO') updatePhoto(photo, rawDt);
   ui.update(rawDt);
   canvas.style.filter = ui.state === 'DEAD' ? 'grayscale(0.85) contrast(1.1)' : '';
   if (menuCam && menuCam.phase === 'menu' && ui.state !== 'MENU') beginMenuBlend(menuCam, gfx.camera);
@@ -260,15 +258,7 @@ function frame(now) {
     return;
   }
   if (ui.state === 'PHOTO') {
-    const focus = player.car || player;
-    const cy = focus.x - world.width / 2, cz = focus.y - world.height / 2;
-    const dist = photo.dist, yaw = photo.yaw, pitch = photo.pitch;
-    const camX = cy + Math.cos(yaw) * Math.cos(pitch) * dist;
-    const camZ = cz + Math.sin(yaw) * Math.cos(pitch) * dist;
-    const camY = 12 + Math.sin(pitch) * dist;
-    gfx.camera.position.set(camX, camY, camZ);
-    gfx.camera.lookAt(cy, 12, cz);
-    if (gfx.camera.userData.ghost) gfx.camera.userData.ghost.length = 0;
+    updatePhoto(photo, rawDt);
     renderFrame(gfx, world, player, fps, police, peds, missions, combat);
     gfx.hud.clearRect(0, 0, 960, 540);
     ui.update(0);
