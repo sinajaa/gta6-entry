@@ -35,7 +35,6 @@ function layoutLots(x0, y0, rand) {
   const axis = rand() < 0.5 ? 'x' : 'y';
   const other = axis === 'x' ? 'y' : 'x';
   const halves = splitRect({ x: x0, y: y0, w: 6, h: 6 }, axis, rand);
-  if (count === 2) return halves;
   if (count === 3) {
     const pick = rand() < 0.5 ? 0 : 1;
     return halves.flatMap((h, i) => (i === pick ? splitRect(h, other, rand) : [h]));

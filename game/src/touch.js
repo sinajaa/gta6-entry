@@ -19,6 +19,7 @@ export function createTouch({ onStick, onButton }) {
   const moveStick = (e) => {
     const r = stick.getBoundingClientRect();
     const radius = r.width / 2;
+    if (radius <= 0) return;
     let dx = (e.clientX - (r.left + radius)) / radius, dy = (e.clientY - (r.top + radius)) / radius;
     const len = Math.hypot(dx, dy);
     if (len < DEAD_ZONE) { dx = dy = 0; }

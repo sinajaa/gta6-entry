@@ -2,7 +2,7 @@
 import { districtAt } from './world.js';
 
 export const DISTRICT_NAMES = ['PUSAT', 'TENGAH', 'PINGGIR'];
-const DISCOUNT_BY_TIER = [0, 5, 10, 15], TIER_STEP = 25, SHIELD_AT = 75, TOAST_GAP = 2, JOB_UNLOCK = 3, JOB_BONUS = 50;
+const DISCOUNT_BY_TIER = [0, 5, 10, 15], TIER_STEP = 25, SHIELD_AT = 75, TOAST_GAP = 2, JOB_UNLOCK = 3, JOB_BONUS = 50, REPAIR_MULT = 0.8;
 const clamp = (v) => Math.max(0, Math.min(100, v));
 
 export function normalizeStanding(raw) {
@@ -46,7 +46,7 @@ export function createStanding(ui) {
       const d = districtAt(x, y);
       return ++s.jobs[d] >= JOB_UNLOCK ? JOB_BONUS : 0;
     },
-    repairPrice: (base, x, y) => Math.round(s.price(base, x, y) * (s.jobs[districtAt(x, y)] >= JOB_UNLOCK ? 0.8 : 1)),
+    repairPrice: (base, x, y) => Math.round(s.price(base, x, y) * (s.jobs[districtAt(x, y)] >= JOB_UNLOCK ? REPAIR_MULT : 1)),
     add(x, y, delta) {
       if (frozen) return;
       const d = districtAt(x, y);

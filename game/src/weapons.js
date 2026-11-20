@@ -10,7 +10,7 @@ export const WEAPONS = {
   compactsmg: { name: 'COMPACT SMG', damage: 14, cooldown: 0.085, spread: 0.07, pellets: 1, range: 440, maxAmmo: 192, startAmmo: 64, pack: 32, recoil: 0.007, kick: 0.06, switchMs: 0.18, mag: 32, reloadMs: 1.5, flash: [0.45, 0.85, 1.0] },
 };
 
-export const PICKUP = { max: 5, radius: 30, minDist: 120, maxDist: 520, interval: 6, farDist: 900 };
+export const PICKUP = { max: 5, radius: 30, minDist: 120, maxDist: 520, interval: 6, farDist: 900, minSeparation: 80 };
 
 export function createAmmo() {
   const ammo = {};
@@ -43,7 +43,7 @@ export function updatePickups(pk, world, focus, dt, onCollect) {
     });
     if (pts.length) {
       const p = pts[Math.floor(Math.random() * pts.length)];
-      if (pk.list.every((q) => Math.hypot(q.x - p.x, q.y - p.y) > 80)) pk.list.push({ x: p.x, y: p.y });
+      if (pk.list.every((q) => Math.hypot(q.x - p.x, q.y - p.y) > PICKUP.minSeparation)) pk.list.push({ x: p.x, y: p.y });
     }
   }
   for (let i = pk.list.length - 1; i >= 0; i--) {

@@ -82,6 +82,7 @@ function firstHit(lx, ly, lz, dx, dz, len, camY, offset) {
   return Infinity;
 }
 const DOLLY_MAX = 90, SPEED_MAX = 320, EDGE_MARGIN = 200;
+const POS_LERP = 0.0015;
 
 export function updateCamera3D(cam3d, actor, mode, dt, world) {
   if (flyover) { driveFlyover(cam3d, actor, dt); return; }
@@ -106,7 +107,7 @@ export function updateCamera3D(cam3d, actor, mode, dt, world) {
     cam3d.near = CAM_NEAR; cam3d.far = CAM_FAR;
     cam3d.updateProjectionMatrix();
   }
-  const k = 1 - Math.pow(0.0015, dt);
+  const k = 1 - Math.pow(POS_LERP, dt);
   cam3d.position.x += (wantX - cam3d.position.x) * k;
   cam3d.position.y += (wantY - cam3d.position.y) * k;
   cam3d.position.z += (wantZ - cam3d.position.z) * k;

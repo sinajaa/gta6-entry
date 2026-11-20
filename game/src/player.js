@@ -18,6 +18,7 @@ export function updatePlayer(p, keys, world, dt) {
   if (p.sprinting) { p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN * dt); p.staminaDelay = STAMINA_DELAY; }
   else { p.staminaDelay = Math.max(0, p.staminaDelay - dt); if (p.staminaDelay <= 0) p.stamina = Math.min(STAMINA_MAX, p.stamina + STAMINA_REGEN * dt); }
   const edgeD = Math.min(p.x, p.y, world.width - p.x, world.height - p.y);
+  // Air mengelilingi tepi peta: jarak minimum ke tepi menentukan apakah pemain berenang.
   const inWater = edgeD < WATER_EDGE;
   p.swimming = inWater;
   const speed = inWater ? SWIM : p.sprinting ? SPRINT : WALK;
