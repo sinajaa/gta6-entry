@@ -2789,3 +2789,16 @@ function drawMission(ctx, p, missions, camera) {
   }
   ctx.restore();
 }
+
+// v8.1 render3d
+// Exported functions of this module:
+//   initRenderer(canvas, hudCanvas, world)  — set up the three.js renderer, scene, camera and HUD canvas.
+//   syncCombat(gfx, combat)                 — sync combat FX particles/effects into GPU quads.
+//   makeGroundTexture(world, renderer, sw)  — bake the ground texture for the specified world.
+//   syncGhosts(gfx, ids)                    — hide/show building "ghost" shells for given ids.
+//   buildWorldMeshes(gfx, world)            — construct all world geometry (buildings, roads, props).
+//   syncActors(gfx, world, player)          — update car/ped transforms from world state.
+//   renderFrame(gfx, world, player, ...)    — render one world frame (scene + post FX).
+//   drawHud(ctx, world, p, ..., combat)     — draw the 2D HUD overlay (map, bars, mission).
+// Render order note: world/actors are drawn first (renderFrame), then the HUD
+// overlay is drawn on top last (drawHud).
